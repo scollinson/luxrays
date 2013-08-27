@@ -42,11 +42,11 @@ namespace luxrays {
    need SSE !
 */
 
-struct {
+struct BVH {
 	BBox box;
 	int32_t child;
 	int32_t pad;
-} BVH;
+};
 
 /**
    the number of bins for construction
