@@ -33,35 +33,6 @@ using boost::int32_t;
 
 namespace luxrays {
 
-#if defined(WIN32) && !defined(__CYGWIN__)
-class __declspec(align(16)) QuadRay {
-#else
-class QuadRay {
-#endif
-public:
-	QuadRay(const Ray &ray)
-	{
-		ox = _mm_set1_ps(ray.o.x);
-		oy = _mm_set1_ps(ray.o.y);
-		oz = _mm_set1_ps(ray.o.z);
-
-		dx = _mm_set1_ps(ray.d.x);
-		dy = _mm_set1_ps(ray.d.y);
-		dz = _mm_set1_ps(ray.d.z);
-
-		mint = _mm_set1_ps(ray.mint);
-		maxt = _mm_set1_ps(ray.maxt);
-	}
-
-	__m128 ox, oy, oz;
-	__m128 dx, dy, dz;
-	mutable __m128 mint, maxt;
-#if defined(WIN32) && !defined(__CYGWIN__)
-};
-#else
-} __attribute__ ((aligned(16)));
-#endif
-
 class QuadTriangle : public Aligned16 {
 public:
 
@@ -105,7 +76,7 @@ public:
 	~QuadTriangle() {
 	}
 
-	bool Intersect(const QuadRay &ray4, const Ray &ray, RayHit *rayHit) const {
+	bool Intersect(const Ray &ray, RayHit *rayHit) const {
 		const __m128 zero = _mm_setzero_ps();
 		const __m128 s1x = _mm_sub_ps(_mm_mul_ps(ray4.dy, edge2z),
 				_mm_mul_ps(ray4.dz, edge2y));
@@ -145,7 +116,7 @@ public:
 				_mm_and_ps(_mm_cmpgt_ps(t, ray4.mint),
 				_mm_cmplt_ps(t, ray4.maxt)));
 
-		const int testmask = _mm_movemask_ps(test);		
+		const int testmask = _mm_movemask_ps(test);
 		if (testmask == 0) return false;
 
 		u_int hit = 0; // Must be initialized because next block might not initialize it
@@ -190,11 +161,12 @@ public:
 */
 #define NB_BINS 8
 
+#define NODE_WIDTH 4
 /**
    The QBVH node structure, 128 bytes long (perfect for cache)
 */
 class QBVHNode {
-public:	
+public:
 	// The constant used to represent empty leaves. there would have been
 	// a conflict with a normal leaf if there were 16 quads,
 	// starting at 2^27 in the quads array... very improbable.
@@ -203,12 +175,12 @@ public:
 	// the number of quads - 1 would give 0, and it would start at 0
 	// in the quads array
 	static const int32_t emptyLeafNode = 0xffffffff;
-	
+
 	/**
 	   The 4 bounding boxes, in SoA form, for direct SIMD use
 	   (one __m128 for each coordinate)
 	*/
-	__m128 bboxes[2][3];
+	int32_t bboxes[NODE_WIDTH][2][3];
 
 	/**
 	   The 4 children. If a child is a leaf, its index will be negative,
@@ -217,20 +189,22 @@ public:
 	   interpretation of the 4 bits), and the 27 remaining bits the index
 	   of the first quad of the node
 	*/
-	int32_t children[4];
-	
+	int32_t children[NODE_WIDTH];
+
 	/**
 	   Base constructor, init correct bounding boxes and a "root" node
 	   (parentNodeIndex == -1)
 	*/
 	inline QBVHNode() {
 		for (int i = 0; i < 3; ++i) {
-			bboxes[0][i] = _mm_set1_ps(INFINITY);
-			bboxes[1][i] = _mm_set1_ps(-INFINITY);
+			for (int j = 0; j < NODE_WIDTH; j++) {
+				bboxes[j][0][i] = INFINITY;
+				bboxes[j][1][i] = -INFINITY;
+			}
 		}
-		
+
 		// All children are empty leaves by default
-		for (int i = 0; i < 4; ++i)
+		for (int i = 0; i < NODE_WIDTH; ++i)
 			children[i] = emptyLeafNode;
 	}
 
@@ -266,7 +240,7 @@ public:
 	inline static bool IsEmpty(int32_t index) {
 		return (index == emptyLeafNode);
 	}
-	
+
 	/**
 	   Indicate the number of quads in the ith child, which must be
 	   a leaf.
@@ -284,7 +258,7 @@ public:
 	inline static u_int NbQuadPrimitives(int32_t index) {
 		return static_cast<u_int>((index >> 27) & 0xf) + 1;
 	}
-	
+
 	/**
 	   Indicate the number of primitives in the ith child, which must be
 	   a leaf.
@@ -304,7 +278,7 @@ public:
 	inline u_int FirstQuadIndexForLeaf(int i) const {
 		return children[i] & 0x07ffffff;
 	}
-	
+
 	/**
 	   Same thing, directly from the index.
 	   @param index
@@ -326,7 +300,7 @@ public:
 		} else {
 			// Put the negative sign in a plateform independent way
 			children[i] = 0x80000000;//-1L & ~(-1L >> 1L);
-			
+
 			children[i] |=  ((static_cast<int32_t>(nbQuads) - 1) & 0xf) << 27;
 
 			children[i] |= static_cast<int32_t>(firstQuadIndex) & 0x07ffffff;
@@ -340,18 +314,18 @@ public:
 	*/
 	inline void SetBBox(int i, const BBox &bbox) {
 		for (int axis = 0; axis < 3; ++axis) {
-			reinterpret_cast<float *>(&(bboxes[0][axis]))[i] = bbox.pMin[axis];
-			reinterpret_cast<float *>(&(bboxes[1][axis]))[i] = bbox.pMax[axis];
+			bboxes[i][0][axis] = bbox.pMin[axis];
+			bboxes[i][1][axis] = bbox.pMax[axis];
 		}
 	}
 
-	
+
 	/**
 	   Intersect a ray described by sse variables with the 4 bounding boxes
 	   of the node.
 	   (the visit array)
 	*/
-	inline int32_t BBoxIntersect(const QuadRay &ray4, const __m128 invDir[3],
+	inline int32_t BBoxIntersect(const Ray &ray, const __m128 invDir[3],
 		const int sign[3]) const {
 		__m128 tMin = ray4.mint;
 		__m128 tMax = ray4.maxt;
@@ -420,7 +394,7 @@ private:
 		std::vector<std::vector<BBox> > &primsBboxes, std::vector<std::vector<Point> > &primsCentroids, const BBox &nodeBbox,
 		const BBox &centroidsBbox, int32_t parentIndex,
 		int32_t childIndex, int depth);
-	
+
 	/**
 	   Create a leaf using the traditional QBVH layout
 	*/
@@ -461,7 +435,7 @@ private:
 	   using the informations stored in the node that
 	   are organized following the traditional layout
 	*/
-	void CreateSwizzledLeaf(int32_t parentIndex, int32_t childIndex, 
+	void CreateSwizzledLeaf(int32_t parentIndex, int32_t childIndex,
 		std::vector<u_int> &meshIndexes, std::vector<u_int> &triangleIndexes);
 
 	/**
