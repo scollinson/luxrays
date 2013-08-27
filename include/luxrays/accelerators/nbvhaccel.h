@@ -33,7 +33,9 @@ using boost::int32_t;
 
 namespace luxrays {
 
-#define NODE_WIDTH 4
+#define NODE_WIDTH_LOG2 2
+#define NODE_WIDTH pow(2, NODE_WIDTH_LOG2)
+
 
 // This code is based on Flexray by Anthony Pajot (anthony.pajot@alumni.enseeiht.fr)
 
