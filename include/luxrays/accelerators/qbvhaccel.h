@@ -33,121 +33,7 @@ using boost::int32_t;
 
 namespace luxrays {
 
-class QuadTriangle : public Aligned16 {
-public:
-
-	QuadTriangle() { };
-
-	QuadTriangle(const std::deque<const Mesh *> &meshes,
-			const unsigned int m0, const unsigned int m1, const unsigned int m2, const unsigned int m3,
-			const unsigned int i0, const unsigned int i1, const unsigned int i2, const unsigned int i3) {
-
-		meshIndex[0] = m0;
-		meshIndex[1] = m1;
-		meshIndex[2] = m2;
-		meshIndex[3] = m3;
-
-		triangleIndex[0] = i0;
-		triangleIndex[1] = i1;
-		triangleIndex[2] = i2;
-		triangleIndex[3] = i3;
-
-		for (u_int i = 0; i < 4; ++i) {
-			const Mesh *mesh = meshes[meshIndex[i]];
-			const Triangle *t = &(mesh->GetTriangles()[triangleIndex[i]]);
-
-			const Point p0 = mesh->GetVertex(t->v[0]);
-			const Point p1 = mesh->GetVertex(t->v[1]);
-			const Point p2 = mesh->GetVertex(t->v[2]);
-			reinterpret_cast<float *> (&origx)[i] = p0.x;
-			reinterpret_cast<float *> (&origy)[i] = p0.y;
-			reinterpret_cast<float *> (&origz)[i] = p0.z;
-
-			reinterpret_cast<float *> (&edge1x)[i] = p1.x - p0.x;
-			reinterpret_cast<float *> (&edge1y)[i] = p1.y - p0.y;
-			reinterpret_cast<float *> (&edge1z)[i] = p1.z - p0.z;
-
-			reinterpret_cast<float *> (&edge2x)[i] = p2.x - p0.x;
-			reinterpret_cast<float *> (&edge2y)[i] = p2.y - p0.y;
-			reinterpret_cast<float *> (&edge2z)[i] = p2.z - p0.z;
-		}
-	}
-
-	~QuadTriangle() {
-	}
-
-	bool Intersect(const Ray &ray, RayHit *rayHit) const {
-		const __m128 zero = _mm_setzero_ps();
-		const __m128 s1x = _mm_sub_ps(_mm_mul_ps(ray4.dy, edge2z),
-				_mm_mul_ps(ray4.dz, edge2y));
-		const __m128 s1y = _mm_sub_ps(_mm_mul_ps(ray4.dz, edge2x),
-				_mm_mul_ps(ray4.dx, edge2z));
-		const __m128 s1z = _mm_sub_ps(_mm_mul_ps(ray4.dx, edge2y),
-				_mm_mul_ps(ray4.dy, edge2x));
-		const __m128 divisor = _mm_add_ps(_mm_mul_ps(s1x, edge1x),
-				_mm_add_ps(_mm_mul_ps(s1y, edge1y),
-				_mm_mul_ps(s1z, edge1z)));
-		__m128 test = _mm_cmpneq_ps(divisor, zero);
-		const __m128 inverse = _mm_div_ps(_mm_set_ps1(1.f), divisor);
-		const __m128 dx = _mm_sub_ps(ray4.ox, origx);
-		const __m128 dy = _mm_sub_ps(ray4.oy, origy);
-		const __m128 dz = _mm_sub_ps(ray4.oz, origz);
-		const __m128 b1 = _mm_mul_ps(_mm_add_ps(_mm_mul_ps(dx, s1x),
-				_mm_add_ps(_mm_mul_ps(dy, s1y), _mm_mul_ps(dz, s1z))),
-				inverse);
-		test = _mm_and_ps(test, _mm_cmpge_ps(b1, zero));
-		const __m128 s2x = _mm_sub_ps(_mm_mul_ps(dy, edge1z),
-				_mm_mul_ps(dz, edge1y));
-		const __m128 s2y = _mm_sub_ps(_mm_mul_ps(dz, edge1x),
-				_mm_mul_ps(dx, edge1z));
-		const __m128 s2z = _mm_sub_ps(_mm_mul_ps(dx, edge1y),
-				_mm_mul_ps(dy, edge1x));
-		const __m128 b2 = _mm_mul_ps(_mm_add_ps(_mm_mul_ps(ray4.dx, s2x),
-				_mm_add_ps(_mm_mul_ps(ray4.dy, s2y), _mm_mul_ps(ray4.dz, s2z))),
-				inverse);
-		const __m128 b0 = _mm_sub_ps(_mm_set1_ps(1.f),
-				_mm_add_ps(b1, b2));
-		test = _mm_and_ps(test, _mm_and_ps(_mm_cmpge_ps(b2, zero),
-				_mm_cmpge_ps(b0, zero)));
-		const __m128 t = _mm_mul_ps(_mm_add_ps(_mm_mul_ps(edge2x, s2x),
-				_mm_add_ps(_mm_mul_ps(edge2y, s2y),
-				_mm_mul_ps(edge2z, s2z))), inverse);
-		test = _mm_and_ps(test,
-				_mm_and_ps(_mm_cmpgt_ps(t, ray4.mint),
-				_mm_cmplt_ps(t, ray4.maxt)));
-
-		const int testmask = _mm_movemask_ps(test);
-		if (testmask == 0) return false;
-
-		u_int hit = 0; // Must be initialized because next block might not initialize it
-		if ((testmask & (testmask - 1)) == 0) {
-			hit = UIntLog2(testmask);
-			ray.maxt = reinterpret_cast<const float *> (&t)[hit];
-		} else {
-			for (u_int i = 0; i < 4; ++i) {
-				if (reinterpret_cast<const int *> (&test)[i] && reinterpret_cast<const float *> (&t)[i] < ray.maxt) {
-					hit = i;
-					ray.maxt = reinterpret_cast<const float *> (&t)[i];
-				}
-			}
-		}
-
-		ray4.maxt = _mm_set1_ps(ray.maxt);
-
-		rayHit->t = ray.maxt;
-		rayHit->b1 = reinterpret_cast<const float *> (&b1)[hit];
-		rayHit->b2 = reinterpret_cast<const float *> (&b2)[hit];
-		rayHit->meshIndex = meshIndex[hit];
-		rayHit->triangleIndex = triangleIndex[hit];
-
-		return true;
-	}
-
-	__m128 origx, origy, origz;
-	__m128 edge1x, edge1y, edge1z;
-	__m128 edge2x, edge2y, edge2z;
-	unsigned int meshIndex[4], triangleIndex[4];
-};
+#define NODE_WIDTH 4
 
 // This code is based on Flexray by Anthony Pajot (anthony.pajot@alumni.enseeiht.fr)
 
@@ -161,7 +47,6 @@ public:
 */
 #define NB_BINS 8
 
-#define NODE_WIDTH 4
 /**
    The QBVH node structure, 128 bytes long (perfect for cache)
 */
@@ -325,31 +210,15 @@ public:
 	   of the node.
 	   (the visit array)
 	*/
-	inline int32_t BBoxIntersect(const Ray &ray, const __m128 invDir[3],
+	inline int32_t BBoxIntersect(const Ray &ray, const float invDir[3],
 		const int sign[3]) const {
-		__m128 tMin = ray4.mint;
-		__m128 tMax = ray4.maxt;
-
-		// X coordinate
-		tMin = _mm_max_ps(tMin, _mm_mul_ps(_mm_sub_ps(bboxes[sign[0]][0],
-				ray4.ox), invDir[0]));
-		tMax = _mm_min_ps(tMax, _mm_mul_ps(_mm_sub_ps(bboxes[1 - sign[0]][0],
-				ray4.ox), invDir[0]));
-
-		// Y coordinate
-		tMin = _mm_max_ps(tMin, _mm_mul_ps(_mm_sub_ps(bboxes[sign[1]][1],
-				ray4.oy), invDir[1]));
-		tMax = _mm_min_ps(tMax, _mm_mul_ps(_mm_sub_ps(bboxes[1 - sign[1]][1],
-				ray4.oy), invDir[1]));
-
-		// Z coordinate
-		tMin = _mm_max_ps(tMin, _mm_mul_ps(_mm_sub_ps(bboxes[sign[2]][2],
-				ray4.oz), invDir[2]));
-		tMax = _mm_min_ps(tMax, _mm_mul_ps(_mm_sub_ps(bboxes[1 - sign[2]][2],
-				ray4.oz), invDir[2]));
-
-		//return the visit flags
-		return _mm_movemask_ps(_mm_cmpge_ps(tMax, tMin));
+		int32_t mask = 0;
+		for (u_int i = 0; i < NODE_WIDTH; i++) {
+			if (BBox::IntersectP(ray, bboxes[i][0], bboxes[i][1], NULL, NULL)) {
+				mask |= 1 << i;
+			}
+		}
+		return mask;
 	}
 };
 
