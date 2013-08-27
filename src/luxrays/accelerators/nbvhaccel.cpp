@@ -156,10 +156,6 @@ void NBVHAccel::BuildTree(u_int start, u_int end, std::vector<u_int> &meshIndexe
 		return;
 	}
 
-	int32_t currentNode = parentIndex;
-	int32_t leftChildIndex = childIndex;
-	int32_t rightChildIndex = childIndex + 1;
-
 	// Number of primitives in each bin
 	int bins[NB_BINS];
 	// Bbox of the primitives in the bin
@@ -195,12 +191,16 @@ void NBVHAccel::BuildTree(u_int start, u_int end, std::vector<u_int> &meshIndexe
 		return;
 	}
 
+	int32_t currentNode;
+	int32_t leftChildIndex = childIndex;
+	int32_t rightChildIndex = childIndex + NODE_WIDTH / pow(2, 1 + depth % NODE_WIDTH_LOG2);
+
 	// Create an intermediate node if the depth indicates to do so.
 	// Register the split axis.
-	if (depth % 2 == 0) {
+	if (depth % NODE_WIDTH_LOG2 != NODE_WIDTH_LOG2 - 1) {
 		currentNode = CreateIntermediateNode(parentIndex, childIndex, nodeBbox);
-		leftChildIndex = 0;
-		rightChildIndex = 2;
+	} else {
+		currentNode = parentIndex;
 	}
 
 	for (u_int i = start; i < end; i += step) {
