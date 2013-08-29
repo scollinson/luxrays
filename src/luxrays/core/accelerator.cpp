@@ -29,6 +29,8 @@ std::string Accelerator::AcceleratorType2String(const AcceleratorType type) {
 			return "AUTO";
 		case ACCEL_BVH:
 			return "BVH";
+        case ACCEL_NBVH:
+            return "NBVH";
 		case ACCEL_QBVH:
 			return "QBVH";
 		case ACCEL_MQBVH:
