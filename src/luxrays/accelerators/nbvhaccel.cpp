@@ -110,6 +110,7 @@ void NBVHAccel::Init(const std::deque<const Mesh *> &ms, const u_longlong totalV
 	}
 
 	// Recursively build the tree
+    LR_LOG(ctx, "Node size: " << sizeof(NBVHNode) << ", prim size: " << sizeof(NTriangle));
 	LR_LOG(ctx, "Building NBVH, primitives: " << totalTriangleCount << ", initial nodes: " << maxNodes);
 
 	nQuads = 0;
@@ -124,6 +125,27 @@ void NBVHAccel::Init(const std::deque<const Mesh *> &ms, const u_longlong totalV
 	LR_LOG(ctx, "Total NBVH memory usage: " << nNodes * sizeof(NBVHNode) / 1024 << "Kbytes");
 	LR_LOG(ctx, "Total NBVH Triangle count: " << nQuads);
 	LR_LOG(ctx, "Max. NBVH Depth: " << maxDepth);
+    
+    
+    FILE *f = fopen("nbvh_nodes.txt", "w");
+    unsigned char *b = (unsigned char *)nodes;
+    for (u_int i = 0; i < nNodes * sizeof(NBVHNode); i++) {
+        fprintf(f, "%02x", b[i]);
+        if ((i+1) % 16 == 0) {
+            fprintf(f, "\n");
+        }
+    }
+    fclose(f);
+    
+    f = fopen("nbvh_prims.txt", "w");
+    b = (unsigned char *)prims;
+    for (u_int i = 0; i < nQuads * sizeof(NTriangle); i++) {
+        fprintf(f, "%02x", b[i]);
+        if ((i+1) % 16 == 0) {
+            fprintf(f, "\n");
+        }
+    }
+    fclose(f);
 
 	initialized = true;
 }
@@ -137,7 +159,7 @@ void NBVHAccel::BuildTree(u_int start, u_int end, std::vector<u_int> &meshIndexe
 
 	// Create a leaf ?
 	//********
-    LR_LOG(ctx, "Triangles: " << end - start << ", parent: " << parentIndex << ", child: " << childIndex);
+    //LR_LOG(ctx, "Triangles: " << end - start << ", parent: " << parentIndex << ", child: " << childIndex);
 	if (depth > 64 || end - start <= maxPrimsPerLeaf) {
 		if (depth > 64) {
 			LR_LOG(ctx, "Maximum recursion depth reached while constructing NBVH, forcing a leaf node");

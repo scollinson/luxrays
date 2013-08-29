@@ -33,8 +33,8 @@ using boost::int32_t;
 
 namespace luxrays {
 
-#define NODE_WIDTH_LOG2 3
-#define NODE_WIDTH 8
+#define NODE_WIDTH_LOG2 2
+#define NODE_WIDTH 4
 
 
 // This code is based on Flexray by Anthony Pajot (anthony.pajot@alumni.enseeiht.fr)
@@ -47,7 +47,7 @@ namespace luxrays {
 struct BVH {
 	BBox box;
 	int32_t child;
-	int32_t pad;
+    int32_t pad;
 };
 
 class NTriangle : public Aligned16 {
@@ -170,6 +170,7 @@ public:
 		for (int i = 0; i < NODE_WIDTH; i++) {
 			bvhs[i].box = BBox();
 			bvhs[i].child = emptyLeafNode;
+            bvhs[i].pad = 0;
 		}
 	}
 
@@ -325,7 +326,7 @@ public:
 	*/
 	virtual bool Intersect(const Ray *ray, RayHit *hit) const;
 
-	friend class MNBVHAccel;
+	friend class MQBVHAccel;
 
 private:
 	// A special initialization method used only by MNBVHAccel
