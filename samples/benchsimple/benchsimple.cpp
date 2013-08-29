@@ -73,7 +73,7 @@ int main(int argc, char** argv) {
 		// Use all GPU devices available (for virtual device)
 		//luxrays::DeviceDescription::Filter(luxrays::DEVICE_TYPE_OPENCL_ALL, deviceDescs);
 		//luxrays::OpenCLDeviceDescription::Filter(luxrays::DEVICE_TYPE_OPENCL_GPU, deviceDescs);
-		
+
 		if (deviceDescs.size() < 1) {
 			std::cerr << "Unable to find an usable intersection device" << std::endl;
 			return (EXIT_FAILURE);
@@ -87,7 +87,7 @@ int main(int argc, char** argv) {
 		// Multiple devices
 		//ctx->AddVirtualIntersectionDevices(deviceDescs);
 		//luxrays::IntersectionDevice *device = ctx->GetIntersectionDevice()[0];
-		
+
 
 		// If it is a NativeThreadIntersectionDevice, you can set the number of threads
 		// to use. The default is to use one for each core available.
@@ -134,6 +134,7 @@ int main(int argc, char** argv) {
 
 		luxrays::TriangleMesh *mesh = new luxrays::TriangleMesh(TRIANGLE_COUNT * 3, TRIANGLE_COUNT, verts, tris);
 		luxrays::DataSet *dataSet = new luxrays::DataSet(ctx);
+		dataSet->SetAcceleratorType(luxrays::ACCEL_NBVH);
 		dataSet->Add(mesh);
 		dataSet->Preprocess();
 		ctx->SetDataSet(dataSet);
@@ -191,7 +192,7 @@ int main(int argc, char** argv) {
 				while (todoRayBuffers.size() > 0) {
 					device->PushRayBuffer(todoRayBuffers.front());
 					todoRayBuffers.pop();
-	
+
 					// Check if it is time to stop
 					const double tNow = luxrays::WallClockTime();
 					if (tNow - tLastCheck > 1.0) {
@@ -199,23 +200,23 @@ int main(int argc, char** argv) {
 							done = true;
 							break;
 						}
-	
+
 						std::cerr << int(tNow - tStart) << "/15secs" << std::endl;
 						tLastCheck = tNow;
 					}
 				}
-	
+
 				todoRayBuffers.push(device->PopRayBuffer());
 				bufferDone += 1.0;
 			}
-	
+
 			while (todoRayBuffers.size() != RAYBUFFERS_COUNT) {
 				todoRayBuffers.push(device->PopRayBuffer());
 				bufferDone += 1.0;
 			}
 			double tStop = luxrays::WallClockTime();
 			double tTime = tStop - tStart;
-	
+
 			ctx->Stop();
 
 			std::cerr << "Test total time: " << tTime << std::endl;
@@ -259,9 +260,9 @@ int main(int argc, char** argv) {
 			while (!done) {
 				device->PopRayBuffer(queueIndex);
 				bufferDone += 1.0;
-	
+
 				device->PushRayBuffer(rayBuffers[queueIndex], queueIndex);
-	
+
 				// Check if it is time to stop
 				const double tNow = luxrays::WallClockTime();
 				if (tNow - tLastCheck > 1.0) {
@@ -269,11 +270,11 @@ int main(int argc, char** argv) {
 						done = true;
 						break;
 					}
-	
+
 					std::cerr << int(tNow - tStart) << "/15secs" << std::endl;
 					tLastCheck = tNow;
 				}
-	
+
 				queueIndex = (queueIndex + 1) % RAYBUFFERS_COUNT;
 			}
 

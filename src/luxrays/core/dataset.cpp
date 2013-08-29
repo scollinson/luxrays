@@ -30,6 +30,7 @@
 #include "luxrays/core/context.h"
 #include "luxrays/core/trianglemesh.h"
 #include "luxrays/accelerators/bvhaccel.h"
+#include "luxrays/accelerators/nbvhaccel.h"
 #include "luxrays/accelerators/qbvhaccel.h"
 #include "luxrays/accelerators/mqbvhaccel.h"
 #include "luxrays/accelerators/mbvhaccel.h"
@@ -122,6 +123,15 @@ const Accelerator *DataSet::GetAccelerator(const AcceleratorType accelType) {
 				const int skipFactor = 1;
 
 				accel = new QBVHAccel(context,
+						maxPrimsPerLeaf, fullSweepThreshold, skipFactor);
+				break;
+			}
+			case ACCEL_NBVH: {
+				const int maxPrimsPerLeaf = 4;
+				const int fullSweepThreshold = 4 * maxPrimsPerLeaf;
+				const int skipFactor = 1;
+
+				accel = new NBVHAccel(context,
 						maxPrimsPerLeaf, fullSweepThreshold, skipFactor);
 				break;
 			}

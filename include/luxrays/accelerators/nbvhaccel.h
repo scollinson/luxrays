@@ -33,8 +33,8 @@ using boost::int32_t;
 
 namespace luxrays {
 
-#define NODE_WIDTH_LOG2 2
-#define NODE_WIDTH pow(2, NODE_WIDTH_LOG2)
+#define NODE_WIDTH_LOG2 3
+#define NODE_WIDTH 8
 
 
 // This code is based on Flexray by Anthony Pajot (anthony.pajot@alumni.enseeiht.fr)
@@ -48,6 +48,85 @@ struct BVH {
 	BBox box;
 	int32_t child;
 	int32_t pad;
+};
+
+class NTriangle : public Aligned16 {
+public:
+
+	NTriangle() { };
+
+	NTriangle(const std::deque<const Mesh *> &meshes, const unsigned int mi,
+	          const unsigned int ti) {
+
+		meshIndex = mi;
+		triangleIndex = ti;
+
+		const Mesh *mesh = meshes[meshIndex];
+		const Triangle *t = &(mesh->GetTriangles()[triangleIndex]);
+
+		const Point p0 = mesh->GetVertex(t->v[0]);
+		const Point p1 = mesh->GetVertex(t->v[1]);
+		const Point p2 = mesh->GetVertex(t->v[2]);
+
+		o.x = p0.x;
+		o.y = p0.y;
+		o.z = p0.z;
+
+		e1.x = p1.x - p0.x;
+		e1.y = p1.y - p0.y;
+		e1.z = p1.z - p0.z;
+
+		e2.x = p2.x - p0.x;
+		e2.y = p2.y - p0.y;
+		e2.z = p2.z - p0.z;
+	}
+
+	~NTriangle() {
+	}
+
+	bool Intersect(const Ray &ray, RayHit *rayHit) const {
+		const Vector s1 = Cross(ray.d, e2);
+
+		const float divisor = Dot(s1, e1);
+		if (divisor == 0.f)
+			return false;
+
+		const float invDivisor = 1.f / divisor;
+
+		// Compute first barycentric coordinate
+		const Vector d = ray.o - o;
+		const float b1 = Dot(d, s1) * invDivisor;
+		if (b1 < 0.f)
+			return false;
+
+		// Compute second barycentric coordinate
+		const Vector s2 = Cross(d, e1);
+		const float b2 = Dot(ray.d, s2) * invDivisor;
+		if (b2 < 0.f)
+			return false;
+
+		const float b0 = 1.f - b1 - b2;
+		if (b0 < 0.f)
+			return false;
+
+		// Compute _t_ to intersection point
+		const float t = Dot(e2, s2) * invDivisor;
+		if (t < ray.mint || t > ray.maxt)
+			return false;
+
+		ray.maxt = t;
+		rayHit->t = ray.maxt;
+		rayHit->b1 = b1;
+		rayHit->b2 = b2;
+		rayHit->meshIndex = meshIndex;
+		rayHit->triangleIndex = triangleIndex;
+
+		return true;
+	}
+
+	Point o;
+	Vector e1, e2;
+	unsigned int meshIndex, triangleIndex, pad;
 };
 
 /**
@@ -284,7 +363,7 @@ private:
 		}
 
 		if (parentIndex >= 0) {
-			nodes[parentIndex].children[childIndex] = index;
+			nodes[parentIndex].bvhs[childIndex].child = index;
 			nodes[parentIndex].SetBBox(childIndex, nodeBbox);
 		}
 		return index;
@@ -316,7 +395,7 @@ private:
 	   test will be redone for the nearest triangle found, to
 	   fill the Intersection structure.
 	*/
-	QuadTriangle *prims;
+	NTriangle *prims;
 
 	/**
 	   The nodes of the NBVH.

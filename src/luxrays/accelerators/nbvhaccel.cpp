@@ -19,7 +19,7 @@
  *
  ***************************************************************************/
 
-#include "luxrays/accelerators/qbvhaccel.h"
+#include "luxrays/accelerators/nbvhaccel.h"
 #include "luxrays/core/utils.h"
 #include "luxrays/core/context.h"
 #include "luxrays/core/intersectiondevice.h"
@@ -58,8 +58,8 @@ void NBVHAccel::Init(const std::deque<const Mesh *> &ms, const u_longlong totalV
 	meshes = ms;
 
 	// Temporary data for building
-	std::vector<u_int> meshIndexes(totalTriangleCount + 3);
-	std::vector<u_int> triangleIndexes(totalTriangleCount + 3); // For the case where
+	std::vector<u_int> meshIndexes(totalTriangleCount);
+	std::vector<u_int> triangleIndexes(totalTriangleCount); // For the case where
 	// the last quad would begin at the last primitive
 	// (or the second or third last primitive)
 
@@ -69,7 +69,7 @@ void NBVHAccel::Init(const std::deque<const Mesh *> &ms, const u_longlong totalV
 	// it is not always the case => continue to use the normal bounds.
 	nNodes = 0;
 	maxNodes = 1;
-	for (u_int layer = ((totalTriangleCount + maxPrimsPerLeaf - 1) / maxPrimsPerLeaf + 3) / 4; layer != 1; layer = (layer + 3) / 4)
+	for (u_int layer = ((totalTriangleCount + maxPrimsPerLeaf - 1) / maxPrimsPerLeaf + (NODE_WIDTH-1)) / NODE_WIDTH; layer != 1; layer = (layer + (NODE_WIDTH-1)) /NODE_WIDTH)
 		maxNodes += layer;
 	nodes = AllocAligned<NBVHNode>(maxNodes);
 	for (u_int i = 0; i < maxNodes; ++i)
@@ -109,14 +109,6 @@ void NBVHAccel::Init(const std::deque<const Mesh *> &ms, const u_longlong totalV
 		}
 	}
 
-	// Arbitrarily take the last primitive for the last 3
-	meshIndexes[totalTriangleCount] = meshIndexes[totalTriangleCount - 1];
-	meshIndexes[totalTriangleCount + 1] = meshIndexes[totalTriangleCount - 1];
-	meshIndexes[totalTriangleCount + 2] = meshIndexes[totalTriangleCount - 1];
-	triangleIndexes[totalTriangleCount] = triangleIndexes[totalTriangleCount - 1];
-	triangleIndexes[totalTriangleCount + 1] = triangleIndexes[totalTriangleCount - 1];
-	triangleIndexes[totalTriangleCount + 2] = triangleIndexes[totalTriangleCount - 1];
-
 	// Recursively build the tree
 	LR_LOG(ctx, "Building NBVH, primitives: " << totalTriangleCount << ", initial nodes: " << maxNodes);
 
@@ -124,13 +116,13 @@ void NBVHAccel::Init(const std::deque<const Mesh *> &ms, const u_longlong totalV
 	BuildTree(0, totalTriangleCount, meshIndexes, triangleIndexes, primsBboxes, primsCentroids,
 			worldBound, centroidsBbox, -1, 0, 0);
 
-	prims = AllocAligned<QuadTriangle>(nQuads);
+	prims = AllocAligned<NTriangle>(nQuads);
 	nQuads = 0;
 	PreSwizzle(0, meshIndexes, triangleIndexes);
 
 	LR_LOG(ctx, "NBVH completed with " << nNodes << "/" << maxNodes << " nodes");
 	LR_LOG(ctx, "Total NBVH memory usage: " << nNodes * sizeof(NBVHNode) / 1024 << "Kbytes");
-	LR_LOG(ctx, "Total NBVH QuadTriangle count: " << nQuads);
+	LR_LOG(ctx, "Total NBVH Triangle count: " << nQuads);
 	LR_LOG(ctx, "Max. NBVH Depth: " << maxDepth);
 
 	initialized = true;
@@ -145,6 +137,7 @@ void NBVHAccel::BuildTree(u_int start, u_int end, std::vector<u_int> &meshIndexe
 
 	// Create a leaf ?
 	//********
+    LR_LOG(ctx, "Triangles: " << end - start << ", parent: " << parentIndex << ", child: " << childIndex);
 	if (depth > 64 || end - start <= maxPrimsPerLeaf) {
 		if (depth > 64) {
 			LR_LOG(ctx, "Maximum recursion depth reached while constructing NBVH, forcing a leaf node");
@@ -192,16 +185,22 @@ void NBVHAccel::BuildTree(u_int start, u_int end, std::vector<u_int> &meshIndexe
 	}
 
 	int32_t currentNode;
-	int32_t leftChildIndex = childIndex;
-	int32_t rightChildIndex = childIndex + NODE_WIDTH / pow(2, 1 + depth % NODE_WIDTH_LOG2);
+	int32_t leftChildIndex;
+	int32_t rightChildIndex;
 
 	// Create an intermediate node if the depth indicates to do so.
 	// Register the split axis.
-	if (depth % NODE_WIDTH_LOG2 != NODE_WIDTH_LOG2 - 1) {
-		currentNode = CreateIntermediateNode(parentIndex, childIndex, nodeBbox);
-	} else {
-		currentNode = parentIndex;
-	}
+    if (depth % NODE_WIDTH_LOG2 == 0) {
+        currentNode = CreateIntermediateNode(parentIndex, childIndex, nodeBbox);
+        leftChildIndex = 0;
+        rightChildIndex = NODE_WIDTH / 2;
+    } else {
+        currentNode = parentIndex;
+        leftChildIndex = childIndex;
+        rightChildIndex = childIndex + NODE_WIDTH / pow(2, 1 + (depth % NODE_WIDTH_LOG2));
+    }
+    
+    //LR_LOG(ctx, "NBVH at depth " << depth << ", childIndex: " << childIndex << ", left child: " << leftChildIndex << ", right child: " << rightChildIndex << ", current node: " << currentNode);
 
 	for (u_int i = start; i < end; i += step) {
 		const u_int mIndex = meshIndexes[i];
@@ -341,22 +340,18 @@ void NBVHAccel::CreateTempLeaf(int32_t parentIndex, int32_t childIndex,
 
 	node.SetBBox(childIndex, nodeBbox);
 
-
-	// Next multiple of 4, divided by 4
-	u_int quads = (nbPrimsTotal + 3) / 4;
-
 	// Use the same encoding as the final one, but with a different meaning.
-	node.InitializeLeaf(childIndex, quads, start);
+	node.InitializeLeaf(childIndex, nbPrimsTotal, start);
 
-	nQuads += quads;
+	nQuads += nbPrimsTotal;
 }
 
 void NBVHAccel::PreSwizzle(int32_t nodeIndex, std::vector<u_int> &meshIndexes, std::vector<u_int> &triangleIndexes) {
-	for (int i = 0; i < 4; ++i) {
+	for (int i = 0; i < NODE_WIDTH; ++i) {
 		if (nodes[nodeIndex].ChildIsLeaf(i))
 			CreateSwizzledLeaf(nodeIndex, i, meshIndexes, triangleIndexes);
 		else
-			PreSwizzle(nodes[nodeIndex].children[i], meshIndexes, triangleIndexes);
+			PreSwizzle(nodes[nodeIndex].bvhs[i].child, meshIndexes, triangleIndexes);
 	}
 }
 
@@ -372,12 +367,10 @@ void NBVHAccel::CreateSwizzledLeaf(int32_t parentIndex, int32_t childIndex,
 	u_int primNum = nQuads;
 
 	for (u_int q = 0; q < nbQuads; ++q) {
-		new (&prims[primNum]) QuadTriangle(meshes,
-				meshIndexes[primOffset], meshIndexes[primOffset + 1], meshIndexes[primOffset + 2], meshIndexes[primOffset + 3],
-				triangleIndexes[primOffset], triangleIndexes[primOffset + 1], triangleIndexes[primOffset + 2], triangleIndexes[primOffset + 3]);
+		new (&prims[primNum]) NTriangle(meshes, meshIndexes[primOffset], triangleIndexes[primOffset]);
 
 		++primNum;
-		primOffset += 4;
+		primOffset += 1;
 	}
 	nQuads += nbQuads;
 	node.InitializeLeaf(childIndex, nbQuads, startQuad);
@@ -388,17 +381,6 @@ void NBVHAccel::CreateSwizzledLeaf(int32_t parentIndex, int32_t childIndex,
 bool NBVHAccel::Intersect(const Ray *initialRay, RayHit *rayHit) const {
 	Ray ray(*initialRay);
 	rayHit->SetMiss();
-
-	//------------------------------
-	// Prepare the ray for intersection
-	QuadRay ray4(ray);
-	__m128 invDir[3];
-	invDir[0] = _mm_set1_ps(1.f / ray.d.x);
-	invDir[1] = _mm_set1_ps(1.f / ray.d.y);
-	invDir[2] = _mm_set1_ps(1.f / ray.d.z);
-
-	int signs[3];
-	ray.GetDirectionSigns(signs);
 
 	//------------------------------
 	// Main loop
@@ -413,71 +395,12 @@ bool NBVHAccel::Intersect(const Ray *initialRay, RayHit *rayHit) const {
 			--todoNode;
 
 			// It is quite strange but checking here for empty nodes slows down the rendering
-			const int32_t visit = node.BBoxIntersect(ray4, invDir, signs);
+			const int32_t visit = node.BBoxIntersect(ray);
 
-			switch (visit) {
-				case (0x1 | 0x0 | 0x0 | 0x0):
-					nodeStack[++todoNode] = node.children[0];
-					break;
-				case (0x0 | 0x2 | 0x0 | 0x0):
-					nodeStack[++todoNode] = node.children[1];
-					break;
-				case (0x1 | 0x2 | 0x0 | 0x0):
-					nodeStack[++todoNode] = node.children[0];
-					nodeStack[++todoNode] = node.children[1];
-					break;
-				case (0x0 | 0x0 | 0x4 | 0x0):
-					nodeStack[++todoNode] = node.children[2];
-					break;
-				case (0x1 | 0x0 | 0x4 | 0x0):
-					nodeStack[++todoNode] = node.children[0];
-					nodeStack[++todoNode] = node.children[2];
-					break;
-				case (0x0 | 0x2 | 0x4 | 0x0):
-					nodeStack[++todoNode] = node.children[1];
-					nodeStack[++todoNode] = node.children[2];
-					break;
-				case (0x1 | 0x2 | 0x4 | 0x0):
-					nodeStack[++todoNode] = node.children[0];
-					nodeStack[++todoNode] = node.children[1];
-					nodeStack[++todoNode] = node.children[2];
-					break;
-				case (0x0 | 0x0 | 0x0 | 0x8):
-					nodeStack[++todoNode] = node.children[3];
-					break;
-				case (0x1 | 0x0 | 0x0 | 0x8):
-					nodeStack[++todoNode] = node.children[0];
-					nodeStack[++todoNode] = node.children[3];
-					break;
-				case (0x0 | 0x2 | 0x0 | 0x8):
-					nodeStack[++todoNode] = node.children[1];
-					nodeStack[++todoNode] = node.children[3];
-					break;
-				case (0x1 | 0x2 | 0x0 | 0x8):
-					nodeStack[++todoNode] = node.children[0];
-					nodeStack[++todoNode] = node.children[1];
-					nodeStack[++todoNode] = node.children[3];
-					break;
-				case (0x0 | 0x0 | 0x4 | 0x8):
-					nodeStack[++todoNode] = node.children[2];
-					nodeStack[++todoNode] = node.children[3];
-					break;
-				case (0x1 | 0x0 | 0x4 | 0x8):
-					nodeStack[++todoNode] = node.children[0];
-					nodeStack[++todoNode] = node.children[2];
-					nodeStack[++todoNode] = node.children[3];
-					break;
-				case (0x0 | 0x2 | 0x4 | 0x8):
-					nodeStack[++todoNode] = node.children[1];
-					nodeStack[++todoNode] = node.children[2];
-					nodeStack[++todoNode] = node.children[3];
-					break;
-				case (0x1 | 0x2 | 0x4 | 0x8):
-					nodeStack[++todoNode] = node.children[0];
-					nodeStack[++todoNode] = node.children[1];
-					nodeStack[++todoNode] = node.children[2];
-					nodeStack[++todoNode] = node.children[3];
-					break;
+			for (u_int i = 0; i < NODE_WIDTH; i++) {
+				if ((visit >> i) & 0x1) {
+					nodeStack[++todoNode] = node.bvhs[i].child;
+				}
 			}
 		} else {
 			//----------------------
@@ -495,7 +418,7 @@ bool NBVHAccel::Intersect(const Ray *initialRay, RayHit *rayHit) const {
 			const u_int offset = NBVHNode::FirstQuadIndex(leafData);
 
 			for (u_int primNumber = offset; primNumber < (offset + nbQuadPrimitives); ++primNumber)
-				prims[primNumber].Intersect(ray4, ray, rayHit);
+				prims[primNumber].Intersect(ray, rayHit);
 		}//end of the else
 	}
 
