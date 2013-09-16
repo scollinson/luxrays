@@ -126,7 +126,7 @@ public:
 
 	Point o;
 	Vector e1, e2;
-	unsigned int meshIndex, triangleIndex, pad;
+	unsigned int meshIndex, triangleIndex, pad[5];
 };
 
 /**
