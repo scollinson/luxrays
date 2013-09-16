@@ -32,7 +32,7 @@ using namespace luxrays;
 // Native thread IntersectionDevice
 //------------------------------------------------------------------------------
 
-size_t NativeThreadIntersectionDevice::RayBufferSize = 512;
+size_t NativeThreadIntersectionDevice::RayBufferSize = 2048;
 
 NativeThreadIntersectionDevice::NativeThreadIntersectionDevice(
 	const Context *context, const size_t devIndex) :
