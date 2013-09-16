@@ -127,7 +127,7 @@ const Accelerator *DataSet::GetAccelerator(const AcceleratorType accelType) {
 				break;
 			}
 			case ACCEL_NBVH: {
-				const int maxPrimsPerLeaf = 16;
+				const int maxPrimsPerLeaf = 4;
 				const int fullSweepThreshold = 4 * maxPrimsPerLeaf;
 				const int skipFactor = 1;
 
