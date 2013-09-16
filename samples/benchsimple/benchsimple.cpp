@@ -30,7 +30,7 @@
 #include "luxrays/core/oclintersectiondevice.h"
 #include "luxrays/core/randomgen.h"
 
-#define RAYBUFFERS_COUNT 10
+#define RAYBUFFERS_COUNT 1
 #define TRIANGLE_COUNT 500
 #define SPACE_SIZE 1000.f
 
@@ -175,7 +175,7 @@ int main(int argc, char** argv) {
 		// rays to trace.
 		//--------------------------------------------------------------------------
 
-		{
+		/*{
 			// The number of queues used
 			device->SetQueueCount(1);
 			// You have to set the max. number of buffers you can push between 2 pop.
@@ -183,7 +183,7 @@ int main(int argc, char** argv) {
 
 			ctx->Start();
 
-			std::cerr << "Running the serial benchmark for 15 seconds..." << std::endl;
+			//std::cerr << "Running the serial benchmark for 15 seconds..." << std::endl;
 			double tStart = luxrays::WallClockTime();
 			double tLastCheck = tStart;
 			double bufferDone = 0.0;
@@ -232,14 +232,14 @@ int main(int argc, char** argv) {
 			else
 				std::cerr << "Test performance: " << std::setiosflags(std::ios::fixed) << std::setprecision(2) <<
 						(raySec / 1000000.0) <<"M rays/sec" << std::endl;
-		}
+		}*/
 
 		//--------------------------------------------------------------------------
 		// Run the parallel benchmark. This simulate multiple threads pushing
 		// rays to trace.
 		//--------------------------------------------------------------------------
 
-		{
+		/*{
 			// The number of queues used
 			device->SetQueueCount(RAYBUFFERS_COUNT);
 			// You have to set the max. number of buffers you can push between 2 pop.
@@ -300,7 +300,34 @@ int main(int argc, char** argv) {
 			else
 				std::cerr << "Test performance: " << std::setiosflags(std::ios::fixed) << std::setprecision(2) <<
 						(raySec / 1000000.0) <<"M rays/sec" << std::endl;
-		}
+		}*/
+        
+        ctx->Start();
+        
+        luxrays::RayBuffer *rayBuffer = rayBuffers.front();
+        
+        device->PushRayBuffer(rayBuffer);
+        rayBuffer = device->PopRayBuffer();
+        
+        ctx->Stop();
+        
+        FILE *f = fopen("rays.txt", "w");
+        unsigned char *b = (unsigned char *)rayBuffer->GetRayBuffer();
+        for (u_int i = 0; i < rayBuffer->GetRayCount() * sizeof(luxrays::Ray); i++) {
+            fprintf(f, "%02x", b[i]);
+            if ((i + 1) % 48 == 0)
+                fprintf(f, "\n");
+        }
+        fclose(f);
+        
+        f = fopen("hits.txt", "w");
+        b = (unsigned char *)rayBuffer->GetHitBuffer();
+        for (u_int i = 0; i < rayBuffer->GetRayCount() * sizeof(luxrays::RayHit); i++) {
+            fprintf(f, "%02x", b[i]);
+            if ((i + 1) % 20 == 0)
+                fprintf(f, "\n");
+        }
+        fclose(f);
 
 		//--------------------------------------------------------------------------
 		// Free everything
