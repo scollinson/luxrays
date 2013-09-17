@@ -195,6 +195,42 @@ private:
 	bool reportedPermissionError;
 };
 
+class FPGAIntersectionDevice : public HardwareIntersectionDevice {
+public:
+	FPGAIntersectionDevice(const Context *context,
+		WD_PCI_SLOT slot, const size_t devIndex);
+	virtual ~FPGAIntersectionDevice();
+
+	virtual void SetDataSet(DataSet *newDataSet);
+	virtual void Start();
+	virtual void Interrupt();
+	virtual void Stop();
+
+	virtual RayBuffer *NewRayBuffer();
+	virtual RayBuffer *NewRayBuffer(const size_t size);
+	virtual size_t GetQueueSize() { return rayBufferQueue.GetSizeToDo(); }
+	virtual void PushRayBuffer(RayBuffer *rayBuffer);
+	virtual RayBuffer *PopRayBuffer();
+
+	static size_t RayBufferSize;
+
+	friend class Context;
+
+protected:
+	virtual void SetExternalRayBufferQueue(RayBufferQueue *queue);
+
+private:
+	static void IntersectionThread(FPGAIntersectionDevice *renderDevice);
+	static void DiagIntHandler(WDC_DEVICE_HANDLE hDev, DRIVER_INT_RESULT *pIntResult);
+	boost::thread *intersectionThread;
+	RayBufferQueueO2O rayBufferQueue;
+	RayBufferQueue *externalRayBufferQueue;
+
+	bool reportedPermissionError;
+
+	WDC_DEVICE_HANDLE hDev;
+};
+
 }
 
 #endif	/* _LUXRAYS_INTERSECTIONDEVICE_H */
