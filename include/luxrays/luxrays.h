@@ -26,6 +26,11 @@
 
 #include "luxrays/cfg.h"
 
+#include "wdc_defs.h"
+#include "wdc_lib.h"
+#include "driver_lib.h"
+#define DRIVER_ERR printf
+
 //------------------------------------------------------------------------------
 // Configure unicode support (requires Boost version 1.50 or better)
 
