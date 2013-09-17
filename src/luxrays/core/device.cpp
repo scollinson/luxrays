@@ -58,7 +58,7 @@ void DeviceDescription::FilterOne(std::vector<DeviceDescription *> &deviceDescri
 		std::vector<DeviceDescription *> selectedDev;
 		selectedDev.push_back(deviceDescriptions[gpuIndex]);
 		deviceDescriptions = selectedDev;
-	} else if (gpuIndex != -1) {
+	} else if (cpuIndex != -1) {
 		std::vector<DeviceDescription *> selectedDev;
 		selectedDev.push_back(deviceDescriptions[cpuIndex]);
 		deviceDescriptions = selectedDev;
@@ -100,6 +100,8 @@ std::string DeviceDescription::GetDeviceType(const DeviceType type)
 			return "OPENCL_UNKNOWN";
 		case DEVICE_TYPE_VIRTUAL:
 			return "VIRTUAL";
+		case DEVICE_TYPE_FPGA:
+			return "FPGA";
 		default:
 			return "UNKNOWN";
 	}
@@ -135,6 +137,28 @@ void Device::Stop() {
 
 void NativeThreadDeviceDescription::AddDeviceDescs(std::vector<DeviceDescription *> &descriptions) {
 	descriptions.push_back(new NativeThreadDeviceDescription("NativeThread"));
+}
+
+void FPGADeviceDescription::AddDeviceDescs(std::vector<DeviceDescription *> &descriptions) {
+	DWORD dwStatus;
+	WDC_PCI_SCAN_RESULT scanResult;
+	
+	BZERO(scanResult);
+	dwStatus = WDC_PciScanDevices(DRIVER_DEFAULT_VENDOR_ID, DRIVER_DEFAULT_DEVICE_ID, &scanResult);
+    if (WD_STATUS_SUCCESS != dwStatus)
+    {
+        DRIVER_ERR("Failed scanning the PCI bus. "
+            "Error: 0x%lx\n", dwStatus);
+		return;
+    }
+
+	char buf[64];
+	for (size_t i = 0; i < scanResult.dwNumDevices; ++i) {
+		sprintf(buf, "FPGA-%03d", (int)i);
+		std::string deviceName = std::string(buf);
+
+		descriptions.push_back(new FPGADeviceDescription(deviceName, scanResult.deviceSlot[i]));
+	}
 }
 
 //------------------------------------------------------------------------------
