@@ -36,9 +36,20 @@
 using namespace luxrays;
 
 Context::Context(LuxRaysDebugHandler handler, const int openclPlatformIndex) {
+	DWORD dwStatus;
 	debugHandler = handler;
 	currentDataSet = NULL;
 	started = false;
+
+	// Get the list of devices available on the platform
+	dwStatus = DRIVER_LibInit();
+    if (WD_STATUS_SUCCESS != dwStatus)
+    {
+        DRIVER_ERR("driver_diag: Failed to initialize the DRIVER library: %s",
+            DRIVER_GetLastErr());
+	} else {
+		FPGADeviceDescription::AddDeviceDescs(deviceDescriptions);
+	}
 
 	// Get the list of devices available on the platform
 	NativeThreadDeviceDescription::AddDeviceDescs(deviceDescriptions);
