@@ -41,11 +41,12 @@ typedef enum {
 	DEVICE_TYPE_OPENCL_GPU = 1 << 3,
 	DEVICE_TYPE_OPENCL_UNKNOWN = 1 << 4,
 	DEVICE_TYPE_VIRTUAL = 1 << 5,
+	DEVICE_TYPE_FPGA = 1 << 6,
 	DEVICE_TYPE_OPENCL_ALL = DEVICE_TYPE_OPENCL_DEFAULT |
 		DEVICE_TYPE_OPENCL_CPU | DEVICE_TYPE_OPENCL_GPU |
 		DEVICE_TYPE_OPENCL_UNKNOWN,
 	DEVICE_TYPE_ALL = DEVICE_TYPE_NATIVE_THREAD | DEVICE_TYPE_OPENCL_ALL |
-		DEVICE_TYPE_VIRTUAL
+		DEVICE_TYPE_VIRTUAL | DEVICE_TYPE_FPGA
 } DeviceType;
 
 class DeviceDescription {
@@ -120,6 +121,21 @@ public:
 
 protected:
 	static void AddDeviceDescs(std::vector<DeviceDescription *> &descriptions);
+};
+
+class FPGADeviceDescription : public DeviceDescription {
+public:
+	FPGADeviceDescription(const std::string deviceName, WD_PCI_SLOT deviceSlot) : 
+		DeviceDescription(deviceName, DEVICE_TYPE_FPGA), slot(deviceSlot) { }
+
+	WD_PCI_SLOT GetSlotIndex() const { return slot; };
+
+	friend class Context;
+
+protected:
+	static void AddDeviceDescs(std::vector<DeviceDescription *> &descriptions);
+
+	WD_PCI_SLOT slot;
 };
 
 }
