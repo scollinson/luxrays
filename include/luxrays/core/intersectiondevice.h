@@ -197,8 +197,8 @@ private:
 
 class FPGAIntersectionDevice : public HardwareIntersectionDevice {
 public:
-	FPGAIntersectionDevice(const Context *context,
-		WD_PCI_SLOT slot, const size_t devIndex);
+	FPGAIntersectionDevice(const Context *context, WD_PCI_SLOT slot,
+		const size_t devIndex);
 	virtual ~FPGAIntersectionDevice();
 
 	virtual void SetDataSet(DataSet *newDataSet);
@@ -208,23 +208,31 @@ public:
 
 	virtual RayBuffer *NewRayBuffer();
 	virtual RayBuffer *NewRayBuffer(const size_t size);
-	virtual size_t GetQueueSize() { return rayBufferQueue.GetSizeToDo(); }
-	virtual void PushRayBuffer(RayBuffer *rayBuffer);
-	virtual RayBuffer *PopRayBuffer();
+	virtual size_t GetQueueSize() { return rayBufferQueue ? rayBufferQueue->GetSizeToDo() : 0; }
+	virtual void PushRayBuffer(RayBuffer *rayBuffer, const u_int queueIndex = 0);
+	virtual RayBuffer *PopRayBuffer(const u_int queueIndex = 0);
+
+	//--------------------------------------------------------------------------
+	// Statistics
+	//--------------------------------------------------------------------------
+
+	virtual double GetLoad() const;
+
+	virtual double GetTotalRaysCount() const;
+	virtual double GetTotalPerformance() const;
+	virtual double GetDataParallelPerformance() const;
+	virtual void ResetPerformaceStats();
 
 	static size_t RayBufferSize;
 
 	friend class Context;
 
-protected:
-	virtual void SetExternalRayBufferQueue(RayBufferQueue *queue);
-
 private:
+
 	static void IntersectionThread(FPGAIntersectionDevice *renderDevice);
-	static void DiagIntHandler(WDC_DEVICE_HANDLE hDev, DRIVER_INT_RESULT *pIntResult);
+
 	boost::thread *intersectionThread;
-	RayBufferQueueO2O rayBufferQueue;
-	RayBufferQueue *externalRayBufferQueue;
+	RayBufferQueueM2M *rayBufferQueue;
 
 	bool reportedPermissionError;
 

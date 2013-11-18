@@ -190,6 +190,10 @@ std::vector<IntersectionDevice *> Context::CreateIntersectionDevices(
 			// Nathive thread devices
 			device = new NativeThreadIntersectionDevice(this, indexOffset + i);
 		}
+		else if (deviceDesc[i]->GetType() == DEVICE_TYPE_FPGA) {
+			const FPGADeviceDescription *fpgaDeviceDesc = (const FPGADeviceDescription *)deviceDesc[i];
+			device = new FPGAIntersectionDevice(this, fpgaDeviceDesc->GetSlotIndex(), i);
+		}
 #if !defined(LUXRAYS_DISABLE_OPENCL)
 		else if (deviceDesc[i]->GetType() & DEVICE_TYPE_OPENCL_ALL) {
 			// OpenCL devices

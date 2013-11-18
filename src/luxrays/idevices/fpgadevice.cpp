@@ -5,7 +5,7 @@
 
 using namespace luxrays;
 
-size_t FPGAIntersectionDevice::RayBufferSize = RAYBUFFER_SIZE;
+size_t FPGAIntersectionDevice::RayBufferSize = 8;
 
 
 /* Open a handle to a DRIVER device */
@@ -56,36 +56,20 @@ static void DeviceClose(WDC_DEVICE_HANDLE hDev)
     }
 }
 
-char *WDC_DIAG_IntTypeDescriptionGet(DWORD dwIntType)
-{
-    if (dwIntType & INTERRUPT_MESSAGE_X)
-        return "Extended Message-Signaled Interrupt (MSI-X)";
-    else if (dwIntType & INTERRUPT_MESSAGE)
-        return "Message-Signaled Interrupt (MSI)";
-    else if (dwIntType & INTERRUPT_LEVEL_SENSITIVE)
-        return "Level-Sensitive Interrupt";
-    return "Edge-Triggered Interrupt";
-}
-
-/* Diagnostics interrupt handler routine */
-void FPGAIntersectionDevice::DiagIntHandler(WDC_DEVICE_HANDLE hDev, DRIVER_INT_RESULT *pIntResult)
-{
-    /* TODO: You can modify this function in order to implement your own
-             diagnostics interrupt handler routine */
-
-    printf("Got interrupt number %ld\n", pIntResult->dwCounter);
-    printf("Interrupt Type: %s\n",
-        WDC_DIAG_IntTypeDescriptionGet(pIntResult->dwEnabledIntType));
-    if (WDC_INT_IS_MSI(pIntResult->dwEnabledIntType))
-        printf("Message Data: 0x%lx\n", pIntResult->dwLastMessage);
-	
-}
-
 FPGAIntersectionDevice::FPGAIntersectionDevice(const Context *context,
 		WD_PCI_SLOT slot, const size_t devIndex) :
 	HardwareIntersectionDevice(context, DEVICE_TYPE_FPGA, devIndex) {
+
+	WORD wData;
 	
 	hDev = DeviceOpen(&slot);
+
+	WDC_PciReadCfg16(hDev, 0x4, &wData);
+	printf("Command register: %04x\n", wData);
+	wData |= 0x400;
+	printf("Command register: %04x\n", wData);
+	WDC_PciWriteCfg16(hDev, 0x4, wData);
+
     
 	DRIVER_DMAOpen(hDev);
 	// Assert Initiator Reset 
@@ -95,11 +79,9 @@ FPGAIntersectionDevice::FPGAIntersectionDevice(const Context *context,
 	// Disable Interrupts
 	DRIVER_WriteDDMACR(hDev, BIT7 | BIT23);
 
-	char buf[64];
-	sprintf(buf, "FPGAIntersectThread-%03d", (int)devIndex);
-	deviceName = std::string(buf);
+	deviceName = std::string("FPGAIntersect");
 	reportedPermissionError = false;
-	externalRayBufferQueue = NULL;
+	rayBufferQueue = NULL;
 	intersectionThread = NULL;
 }
 
@@ -108,7 +90,9 @@ FPGAIntersectionDevice::~FPGAIntersectionDevice() {
 
 	if (started)
 		Stop();
+
 	delete intersectionThread;
+	delete rayBufferQueue;
 
 	if (hDev) {
 		pDevCtx = (PDRIVER_DEV_CTX)WDC_GetDevContext(hDev);
@@ -117,22 +101,27 @@ FPGAIntersectionDevice::~FPGAIntersectionDevice() {
 	}
 }
 
-void FPGAIntersectionDevice::SetExternalRayBufferQueue(RayBufferQueue *queue) {
-	assert (!started);
-
-	externalRayBufferQueue = queue;
-}
-
 void FPGAIntersectionDevice::SetDataSet(DataSet *newDataSet) {
 	IntersectionDevice::SetDataSet(newDataSet);
-
-	dataSet->GetAccelerator(ACCEL_NBVH)->SendToFPGA(hDev);
+	
+	if (dataSet) {
+		const AcceleratorType accelType = dataSet->GetAcceleratorType();
+		if (accelType != ACCEL_AUTO) {
+			accel = dataSet->GetAccelerator(accelType);
+		} else {
+			accel = dataSet->GetAccelerator(ACCEL_NBVH);
+		}
+	}
+	
+	accel->SendToFPGA(hDev);
 }
 
 void FPGAIntersectionDevice::Start() {
 	IntersectionDevice::Start();
 
 	if (dataParallelSupport) {
+		rayBufferQueue = new RayBufferQueueM2M(queueCount);
+
 		// Create the thread for the rendering
 		intersectionThread = new boost::thread(boost::bind(FPGAIntersectionDevice::IntersectionThread, this));
 
@@ -142,6 +131,10 @@ void FPGAIntersectionDevice::Start() {
 			LR_LOG(deviceContext, "[FPGA device::" << deviceName << "] Failed to set ray intersection thread priority (you probably need root/administrator permission to set thread realtime priority)");
 			reportedPermissionError = true;
 		}
+
+		statsDeviceIdleTime = 0.0;
+		statsTotalDataParallelRayCount = 0.0;
+		statsDeviceTotalTime = 0.0;
 	}
 }
 
@@ -161,8 +154,8 @@ void FPGAIntersectionDevice::Stop() {
 		delete intersectionThread;
 		intersectionThread = NULL;
 
-		if (!externalRayBufferQueue)
-			rayBufferQueue.Clear();
+		delete rayBufferQueue;
+		rayBufferQueue = NULL;
 	}
 }
 
@@ -174,20 +167,18 @@ RayBuffer *FPGAIntersectionDevice::NewRayBuffer(const size_t size) {
 	return new RayBuffer(RoundUpPow2<size_t>(size));
 }
 
-void FPGAIntersectionDevice::PushRayBuffer(RayBuffer *rayBuffer) {
+void FPGAIntersectionDevice::PushRayBuffer(RayBuffer *rayBuffer, const u_int queueIndex) {
 	assert (started);
-	assert (!externalRayBufferQueue);
 	assert (dataParallelSupport);
 
-	rayBufferQueue.PushToDo(rayBuffer, 0);
+	rayBufferQueue->PushToDo(rayBuffer, queueIndex);
 }
 
-RayBuffer *FPGAIntersectionDevice::PopRayBuffer() {
+RayBuffer *FPGAIntersectionDevice::PopRayBuffer(const u_int queueIndex) {
 	assert (started);
-	assert (!externalRayBufferQueue);
 	assert (dataParallelSupport);
 
-	return rayBufferQueue.PopDone(0);
+	return rayBufferQueue->PopDone(queueIndex);
 }
 
 void FPGAIntersectionDevice::IntersectionThread(FPGAIntersectionDevice *renderDevice) {
@@ -226,25 +217,30 @@ void FPGAIntersectionDevice::IntersectionThread(FPGAIntersectionDevice *renderDe
     DRIVER_WriteHITADDR(renderDevice->hDev, HitAddr);
 
 	try {
-		RayBufferQueue *queue = renderDevice->externalRayBufferQueue ?
-			renderDevice->externalRayBufferQueue : &(renderDevice->rayBufferQueue);
+		RayBufferQueue *queue = renderDevice->rayBufferQueue;
 
 		const double startTime = WallClockTime();
 		while (!boost::this_thread::interruption_requested()) {
 			const double t1 = WallClockTime();
 			RayBuffer *rayBuffer = queue->PopToDo();
-			renderDevice->statsDeviceIdleTime += WallClockTime() - t1;
+
 			// Trace rays
 			const Ray *rb = rayBuffer->GetRayBuffer();
 			RayHit *hb = rayBuffer->GetHitBuffer();
 			const size_t rayCount = rayBuffer->GetRayCount();
+
+			for (size_t i = 0; i < rayCount; ++i) {
+				hb[i].SetMiss();
+			}
 			
 			DRIVER_WriteRAYCOUNT(renderDevice->hDev, rayCount);
 			
 			memcpy(pDevCtx->pRayBuf, rb, rayCount * sizeof(Ray));
+
+			renderDevice->statsDeviceIdleTime += WallClockTime() - t1;
 			
-			DRIVER_DMAStart(pDevCtx->hDma, pDevCtx->fIsRead);
-			DRIVER_DMAPollCompletion(pDevCtx->hDma, pDevCtx->fIsRead);
+			//DRIVER_DMAStart(pDevCtx->hDma, pDevCtx->fIsRead);
+			//DRIVER_DMAPollCompletion(pDevCtx->hDma, pDevCtx->fIsRead);
 			
 			memcpy(hb, pDevCtx->pHitBuf, rayCount * sizeof(RayHit));
 			
@@ -261,4 +257,28 @@ void FPGAIntersectionDevice::IntersectionThread(FPGAIntersectionDevice *renderDe
 Error:
     if (pDevCtx->hDma)
         DRIVER_DMAClose((DRIVER_DMA_HANDLE)pDevCtx->hDma);
+}
+
+//------------------------------------------------------------------------------
+// Statistics
+//------------------------------------------------------------------------------
+
+double FPGAIntersectionDevice::GetLoad() const {
+	return IntersectionDevice::GetLoad();
+}
+
+double FPGAIntersectionDevice::GetTotalRaysCount() const {
+	return HardwareIntersectionDevice::GetTotalRaysCount();
+}
+
+double FPGAIntersectionDevice::GetTotalPerformance() const {
+	return HardwareIntersectionDevice::GetTotalPerformance();
+}
+
+double FPGAIntersectionDevice::GetDataParallelPerformance() const {
+	return HardwareIntersectionDevice::GetDataParallelPerformance();
+}
+
+void FPGAIntersectionDevice::ResetPerformaceStats() {
+	HardwareIntersectionDevice::ResetPerformaceStats();
 }

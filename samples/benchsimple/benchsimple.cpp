@@ -56,7 +56,8 @@ int main(int argc, char** argv) {
 		//luxrays::DeviceDescription::FilterOne(deviceDescs);
 
 		// Use the first native C++ device available
-		luxrays::DeviceDescription::Filter(luxrays::DEVICE_TYPE_NATIVE_THREAD, deviceDescs);
+		luxrays::DeviceDescription::Filter(luxrays::DEVICE_TYPE_FPGA, deviceDescs);
+		//luxrays::DeviceDescription::Filter(luxrays::DEVICE_TYPE_NATIVE_THREAD, deviceDescs);
 
 		// Use the first OpenCL device available
 		//luxrays::DeviceDescription::Filter(luxrays::DEVICE_TYPE_OPENCL_ALL, deviceDescs);
@@ -81,7 +82,7 @@ int main(int argc, char** argv) {
 
 		// Single device
 		deviceDescs.resize(1);
-		std::cerr << "Selected intersection device: " << deviceDescs[0]->GetName();
+		std::cerr << "Selected intersection device: " << deviceDescs[0]->GetName() << std::endl;
 		luxrays::IntersectionDevice *device = ctx->AddIntersectionDevices(deviceDescs)[0];
 
 		// Multiple devices
@@ -149,7 +150,7 @@ int main(int argc, char** argv) {
 		std::queue<luxrays::RayBuffer *> todoRayBuffers;
 		std::vector<luxrays::RayBuffer *> rayBuffers;
 		for (size_t i = 0; i < RAYBUFFERS_COUNT; ++i) {
-			luxrays::RayBuffer *rayBuffer = device->NewRayBuffer();
+			luxrays::RayBuffer *rayBuffer = device->NewRayBuffer(512);
 			todoRayBuffers.push(rayBuffer);
 			rayBuffers.push_back(rayBuffer);
 
@@ -301,13 +302,17 @@ int main(int argc, char** argv) {
 				std::cerr << "Test performance: " << std::setiosflags(std::ios::fixed) << std::setprecision(2) <<
 						(raySec / 1000000.0) <<"M rays/sec" << std::endl;
 		}*/
+		device->SetQueueCount(1);
+		device->SetBufferCount(RAYBUFFERS_COUNT);
         
         ctx->Start();
         
         luxrays::RayBuffer *rayBuffer = rayBuffers.front();
         
         device->PushRayBuffer(rayBuffer);
-        rayBuffer = device->PopRayBuffer();
+		rayBuffer = device->PopRayBuffer();
+		//device->PushRayBuffer(rayBuffer);
+		//rayBuffer = device->PopRayBuffer();
         
         ctx->Stop();
         
