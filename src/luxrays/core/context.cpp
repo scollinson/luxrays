@@ -36,20 +36,9 @@
 using namespace luxrays;
 
 Context::Context(LuxRaysDebugHandler handler, const int openclPlatformIndex) {
-	DWORD dwStatus;
 	debugHandler = handler;
 	currentDataSet = NULL;
 	started = false;
-
-	// Get the list of devices available on the platform
-	dwStatus = DRIVER_LibInit();
-    if (WD_STATUS_SUCCESS != dwStatus)
-    {
-        DRIVER_ERR("driver_diag: Failed to initialize the DRIVER library: %s",
-            DRIVER_GetLastErr());
-	} else {
-		FPGADeviceDescription::AddDeviceDescs(deviceDescriptions);
-	}
 
 	// Get the list of devices available on the platform
 	NativeThreadDeviceDescription::AddDeviceDescs(deviceDescriptions);
@@ -192,7 +181,7 @@ std::vector<IntersectionDevice *> Context::CreateIntersectionDevices(
 		}
 		else if (deviceDesc[i]->GetType() == DEVICE_TYPE_FPGA) {
 			const FPGADeviceDescription *fpgaDeviceDesc = (const FPGADeviceDescription *)deviceDesc[i];
-			device = new FPGAIntersectionDevice(this, fpgaDeviceDesc->GetSlotIndex(), i);
+			device = new FPGAIntersectionDevice(this, fpgaDeviceDesc->GetDeviceFile(), i);
 		}
 #if !defined(LUXRAYS_DISABLE_OPENCL)
 		else if (deviceDesc[i]->GetType() & DEVICE_TYPE_OPENCL_ALL) {

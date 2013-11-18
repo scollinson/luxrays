@@ -37,53 +37,6 @@ bool NBVHAccel::CanRunOnOpenCLDevice(OpenCLIntersectionDevice *device) const {
 	return false;
 }
 
-void NBVHAccel::SendToFPGA(WDC_DEVICE_HANDLE hDev) const
-{
-	DWORD dwStatus;
-	PDRIVER_DEV_CTX pDevCtx = (PDRIVER_DEV_CTX)WDC_GetDevContext(hDev);
-	DWORD dwOptions = DMA_TO_DEVICE | DMA_KERNEL_BUFFER_ALLOC;
-	UINT32 NodeAddr, PrimAddr;
-
-    /* Allocate and lock a DMA buffer */
-    dwStatus = WDC_DMAContigBufLock(hDev, &pDevCtx->pNodeBuf, dwOptions, nNodes * sizeof(NBVHNode),
-        &pDevCtx->hDma->pNodeDma);
-    if (WD_STATUS_SUCCESS != dwStatus) 
-    {
-        DRIVER_ERR("DRIVER_DMAOpen: Failed locking a DMA buffer. "
-            "Error 0x%lx\n", dwStatus);
-        goto Error;
-    }
-	memcpy(pDevCtx->pNodeBuf, nodes, nNodes * sizeof(NBVHNode));
-
-    dwStatus = WDC_DMAContigBufLock(hDev, &pDevCtx->pPrimBuf, dwOptions, nQuads * sizeof(NTriangle),
-        &pDevCtx->hDma->pPrimDma);
-    if (WD_STATUS_SUCCESS != dwStatus) 
-    {
-        DRIVER_ERR("DRIVER_DMAOpen: Failed locking a DMA buffer. "
-            "Error 0x%lx\n", dwStatus);
-        goto Error;
-    }
-	memcpy(pDevCtx->pPrimBuf, prims, nQuads * sizeof(NTriangle));
-
-	pDevCtx->fIsRead = TRUE;
-
-	NodeAddr = (UINT32)pDevCtx->hDma->pNodeDma->Page[0].pPhysicalAddr;
-	DRIVER_WriteNODEADDR(hDev, NodeAddr);
-	DRIVER_WriteNODECOUNT(hDev, nNodes);
-
-	PrimAddr = (UINT32)pDevCtx->hDma->pPrimDma->Page[0].pPhysicalAddr;
-	DRIVER_WritePRIMADDR(hDev, PrimAddr);
-	DRIVER_WritePRIMCOUNT(hDev, nQuads);
-
-	DRIVER_DMAStart(pDevCtx->hDma, pDevCtx->fIsRead);
-	DRIVER_DMAPollCompletion(pDevCtx->hDma, pDevCtx->fIsRead);
-	return;
-
-Error:
-    if (pDevCtx->hDma)
-        DRIVER_DMAClose((DRIVER_DMA_HANDLE)pDevCtx->hDma);
-}
-
 NBVHAccel::NBVHAccel(const Context *context,
 		u_int mp, u_int fst, u_int sf) : fullSweepThreshold(fst),
 		skipFactor(sf), maxPrimsPerLeaf(mp), ctx(context) {

@@ -197,7 +197,7 @@ private:
 
 class FPGAIntersectionDevice : public HardwareIntersectionDevice {
 public:
-	FPGAIntersectionDevice(const Context *context, WD_PCI_SLOT slot,
+	FPGAIntersectionDevice(const Context *context, int devFile,
 		const size_t devIndex);
 	virtual ~FPGAIntersectionDevice();
 
@@ -236,7 +236,7 @@ private:
 
 	bool reportedPermissionError;
 
-	WDC_DEVICE_HANDLE hDev;
+	int dev;
 };
 
 }
