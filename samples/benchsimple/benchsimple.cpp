@@ -56,9 +56,11 @@ int main(int argc, char** argv) {
 		//luxrays::DeviceDescription::FilterOne(deviceDescs);
 
 		// Use the first native C++ device available
-		luxrays::DeviceDescription::Filter(luxrays::DEVICE_TYPE_FPGA, deviceDescs);
-		//luxrays::DeviceDescription::Filter(luxrays::DEVICE_TYPE_NATIVE_THREAD, deviceDescs);
+		luxrays::DeviceDescription::Filter(luxrays::DEVICE_TYPE_NATIVE_THREAD, deviceDescs);
 
+		// Use the first FPGA device available
+		//luxrays::DeviceDescription::Filter(luxrays::DEVICE_TYPE_FPGA, deviceDescs);
+		
 		// Use the first OpenCL device available
 		//luxrays::DeviceDescription::Filter(luxrays::DEVICE_TYPE_OPENCL_ALL, deviceDescs);
 		//luxrays::DeviceDescription::FilterOne(deviceDescs);
