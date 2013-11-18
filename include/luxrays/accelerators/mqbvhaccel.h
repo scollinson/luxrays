@@ -42,7 +42,6 @@ public:
 	virtual AcceleratorType GetType() const { return ACCEL_QBVH; }
 	virtual OpenCLKernels *NewOpenCLKernels(OpenCLIntersectionDevice *device,
 		const u_int kernelCount, const u_int stackSize, const bool enableImageStorage) const;
-	virtual void SendToFPGA(WDC_DEVICE_HANDLE hDev) const { }
 	virtual bool CanRunOnOpenCLDevice(OpenCLIntersectionDevice *device) const;
 	virtual void Init(const std::deque<const Mesh *> &meshes,
 		const u_longlong totalVertexCount,
