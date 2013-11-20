@@ -197,8 +197,7 @@ private:
 
 class FPGAIntersectionDevice : public HardwareIntersectionDevice {
 public:
-	FPGAIntersectionDevice(const Context *context, int devFile,
-		const size_t devIndex);
+	FPGAIntersectionDevice(const Context *context, const size_t devIndex);
 	virtual ~FPGAIntersectionDevice();
 
 	virtual void SetDataSet(DataSet *newDataSet);
@@ -232,11 +231,9 @@ private:
 	static void IntersectionThread(FPGAIntersectionDevice *renderDevice);
 
 	boost::thread *intersectionThread;
-	RayBufferQueueM2M *rayBufferQueue;
+	RayBufferQueueM2O *rayBufferQueue;
 
 	bool reportedPermissionError;
-
-	int dev;
 };
 
 }
