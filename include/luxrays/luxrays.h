@@ -26,6 +26,8 @@
 
 #include "luxrays/cfg.h"
 
+#include "xrti_lib.h"
+
 //------------------------------------------------------------------------------
 // Configure unicode support (requires Boost version 1.50 or better)
 
