@@ -36,6 +36,8 @@ typedef enum {
 class OpenCLKernels;
 class OpenCLIntersectionDevice;
 
+class FPGAIntersectionDevice;
+
 class Accelerator {
 public:
 	Accelerator() { }
@@ -46,6 +48,9 @@ public:
 	virtual OpenCLKernels *NewOpenCLKernels(OpenCLIntersectionDevice *device,
 		const u_int kernelCount, const u_int stackSize, const bool enableImageStorage) const = 0;
 	virtual bool CanRunOnOpenCLDevice(OpenCLIntersectionDevice *device) const { return true; }
+
+	virtual bool CanRunOnFPGADevice(FPGAIntersectionDevice *device) const { return false; }
+	virtual void SendSceneToFPGA() const {  };
 
 	virtual void Init(const std::deque<const Mesh *> &meshes, const u_longlong totalVertexCount, const u_longlong totalTriangleCount) = 0;
 	virtual bool DoesSupportUpdate() const { return false; }
