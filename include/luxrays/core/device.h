@@ -125,17 +125,13 @@ protected:
 
 class FPGADeviceDescription : public DeviceDescription {
 public:
-	FPGADeviceDescription(const std::string deviceName, int devFile) : 
-		DeviceDescription(deviceName, DEVICE_TYPE_FPGA), dev(devFile) { }
-
-	int GetDeviceFile() const { return dev; };
+	FPGADeviceDescription(const std::string deviceName) : 
+		DeviceDescription(deviceName, DEVICE_TYPE_FPGA) { }
 
 	friend class Context;
 
 protected:
 	static void AddDeviceDescs(std::vector<DeviceDescription *> &descriptions);
-
-	int dev;
 };
 
 }
