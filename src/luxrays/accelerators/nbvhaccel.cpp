@@ -37,6 +37,14 @@ bool NBVHAccel::CanRunOnOpenCLDevice(OpenCLIntersectionDevice *device) const {
 	return false;
 }
 
+bool NBVHAccel::CanRunOnFPGADevice(FPGAIntersectionDevice *device) const { 
+	return true;
+}
+
+void NBVHAccel::SendSceneToFPGA() const {
+	xrti_transfer_scene((void *)nodes, nNodes*sizeof(NBVHNode), nNodes, (void *)prims, nQuads*sizeof(NTriangle), nQuads);
+}
+
 NBVHAccel::NBVHAccel(const Context *context,
 		u_int mp, u_int fst, u_int sf) : fullSweepThreshold(fst),
 		skipFactor(sf), maxPrimsPerLeaf(mp), ctx(context) {
