@@ -132,10 +132,11 @@ void NBVHAccel::Init(const std::deque<const Mesh *> &ms, const u_longlong totalV
 	LR_LOG(ctx, "NBVH completed with " << nNodes << "/" << maxNodes << " nodes");
 	LR_LOG(ctx, "Total NBVH memory usage: " << nNodes * sizeof(NBVHNode) / 1024 << "Kbytes");
 	LR_LOG(ctx, "Total NBVH Triangle count: " << nQuads);
+	LR_LOG(ctx, "Total NBVH Triangle memory usage: " << nQuads* sizeof(NTriangle) / 1024 << "Kbytes");
 	LR_LOG(ctx, "Max. NBVH Depth: " << maxDepth);
     
     
-    FILE *f = fopen("nbvh_nodes.txt", "w");
+    FILE *f = fopen("/mnt/scratch/sam/ray_tracer/tb_generator/data/nbvh_nodes.txt", "w");
     unsigned char *b = (unsigned char *)nodes;
     for (u_int i = 0; i < nNodes * sizeof(NBVHNode); i++) {
         fprintf(f, "%02x", b[i]);
@@ -145,7 +146,7 @@ void NBVHAccel::Init(const std::deque<const Mesh *> &ms, const u_longlong totalV
     }
     fclose(f);
     
-    f = fopen("nbvh_prims.txt", "w");
+    f = fopen("/mnt/scratch/sam/ray_tracer/tb_generator/data/nbvh_prims.txt", "w");
     b = (unsigned char *)prims;
     for (u_int i = 0; i < nQuads * sizeof(NTriangle); i++) {
         fprintf(f, "%02x", b[i]);
