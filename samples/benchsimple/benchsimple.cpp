@@ -30,7 +30,7 @@
 #include "luxrays/core/oclintersectiondevice.h"
 #include "luxrays/core/randomgen.h"
 
-#define RAYBUFFERS_COUNT 1
+#define RAYBUFFERS_COUNT 10
 #define TRIANGLE_COUNT 500
 #define SPACE_SIZE 1000.f
 
@@ -56,10 +56,10 @@ int main(int argc, char** argv) {
 		//luxrays::DeviceDescription::FilterOne(deviceDescs);
 
 		// Use the first native C++ device available
-		luxrays::DeviceDescription::Filter(luxrays::DEVICE_TYPE_NATIVE_THREAD, deviceDescs);
+		//luxrays::DeviceDescription::Filter(luxrays::DEVICE_TYPE_NATIVE_THREAD, deviceDescs);
 
 		// Use the first FPGA device available
-		//luxrays::DeviceDescription::Filter(luxrays::DEVICE_TYPE_FPGA, deviceDescs);
+		luxrays::DeviceDescription::Filter(luxrays::DEVICE_TYPE_FPGA, deviceDescs);
 		
 		// Use the first OpenCL device available
 		//luxrays::DeviceDescription::Filter(luxrays::DEVICE_TYPE_OPENCL_ALL, deviceDescs);
@@ -152,7 +152,7 @@ int main(int argc, char** argv) {
 		std::queue<luxrays::RayBuffer *> todoRayBuffers;
 		std::vector<luxrays::RayBuffer *> rayBuffers;
 		for (size_t i = 0; i < RAYBUFFERS_COUNT; ++i) {
-			luxrays::RayBuffer *rayBuffer = device->NewRayBuffer(512);
+			luxrays::RayBuffer *rayBuffer = device->NewRayBuffer();
 			todoRayBuffers.push(rayBuffer);
 			rayBuffers.push_back(rayBuffer);
 
@@ -178,7 +178,7 @@ int main(int argc, char** argv) {
 		// rays to trace.
 		//--------------------------------------------------------------------------
 
-		/*{
+		{
 			// The number of queues used
 			device->SetQueueCount(1);
 			// You have to set the max. number of buffers you can push between 2 pop.
@@ -235,14 +235,14 @@ int main(int argc, char** argv) {
 			else
 				std::cerr << "Test performance: " << std::setiosflags(std::ios::fixed) << std::setprecision(2) <<
 						(raySec / 1000000.0) <<"M rays/sec" << std::endl;
-		}*/
+		}
 
 		//--------------------------------------------------------------------------
 		// Run the parallel benchmark. This simulate multiple threads pushing
 		// rays to trace.
 		//--------------------------------------------------------------------------
 
-		/*{
+		{
 			// The number of queues used
 			device->SetQueueCount(RAYBUFFERS_COUNT);
 			// You have to set the max. number of buffers you can push between 2 pop.
@@ -303,8 +303,8 @@ int main(int argc, char** argv) {
 			else
 				std::cerr << "Test performance: " << std::setiosflags(std::ios::fixed) << std::setprecision(2) <<
 						(raySec / 1000000.0) <<"M rays/sec" << std::endl;
-		}*/
-		device->SetQueueCount(1);
+		}
+		/*device->SetQueueCount(1);
 		device->SetBufferCount(RAYBUFFERS_COUNT);
         
         ctx->Start();
@@ -313,23 +313,23 @@ int main(int argc, char** argv) {
         
         device->PushRayBuffer(rayBuffer);
 		rayBuffer = device->PopRayBuffer();
-		//device->PushRayBuffer(rayBuffer);
-		//rayBuffer = device->PopRayBuffer();
+		device->PushRayBuffer(rayBuffer);
+		rayBuffer = device->PopRayBuffer();
         
-        ctx->Stop();
+        ctx->Stop();*/
         
-        FILE *f = fopen("rays.txt", "w");
-        unsigned char *b = (unsigned char *)rayBuffer->GetRayBuffer();
-        for (u_int i = 0; i < rayBuffer->GetRayCount() * sizeof(luxrays::Ray); i++) {
+        FILE *f = fopen("/mnt/scratch/sam/ray_tracer/tb_generator/data/rays.txt", "w");
+        unsigned char *b = (unsigned char *)rayBuffers[0]->GetRayBuffer();
+        for (u_int i = 0; i < rayBuffers[0]->GetRayCount() * sizeof(luxrays::Ray); i++) {
             fprintf(f, "%02x", b[i]);
             if ((i + 1) % 48 == 0)
                 fprintf(f, "\n");
         }
         fclose(f);
         
-        f = fopen("hits.txt", "w");
-        b = (unsigned char *)rayBuffer->GetHitBuffer();
-        for (u_int i = 0; i < rayBuffer->GetRayCount() * sizeof(luxrays::RayHit); i++) {
+        f = fopen("/mnt/scratch/sam/ray_tracer/tb_generator/data/hits.txt", "w");
+        b = (unsigned char *)rayBuffers[0]->GetHitBuffer();
+        for (u_int i = 0; i < rayBuffers[0]->GetRayCount() * sizeof(luxrays::RayHit); i++) {
             fprintf(f, "%02x", b[i]);
             if ((i + 1) % 20 == 0)
                 fprintf(f, "\n");
