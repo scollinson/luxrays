@@ -143,6 +143,8 @@ set(SLG_SRCS
 	${LuxRays_SOURCE_DIR}/src/slg/engines/lightcpu/lightcputhread.cpp
 	${LuxRays_SOURCE_DIR}/src/slg/engines/pathcpu/pathcpu.cpp
 	${LuxRays_SOURCE_DIR}/src/slg/engines/pathcpu/pathcputhread.cpp
+        ${LuxRays_SOURCE_DIR}/src/slg/engines/pathfpga/pathfpga.cpp
+        ${LuxRays_SOURCE_DIR}/src/slg/engines/pathfpga/pathfpgathread.cpp
 	${LuxRays_SOURCE_DIR}/src/slg/engines/filesaver/filesaver.cpp
 	${LuxRays_SOURCE_DIR}/src/slg/engines/pathhybrid/pathhybrid.cpp
 	${LuxRays_SOURCE_DIR}/src/slg/engines/pathhybrid/pathhybridthread.cpp

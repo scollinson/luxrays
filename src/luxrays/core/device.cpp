@@ -140,7 +140,7 @@ void NativeThreadDeviceDescription::AddDeviceDescs(std::vector<DeviceDescription
 }
 
 void FPGADeviceDescription::AddDeviceDescs(std::vector<DeviceDescription *> &descriptions) {
-// TODO
+	descriptions.push_back(new FPGADeviceDescription("FPGA"));
 }
 
 //------------------------------------------------------------------------------

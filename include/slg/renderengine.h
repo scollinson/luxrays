@@ -43,7 +43,8 @@ typedef enum {
 	BIDIRVMCPU = 10,
 	FILESAVER = 11,
 	RTPATHOCL = 12,
-	PATHHYBRID = 13
+	PATHHYBRID = 13,
+	PATHFPGA = 14
 } RenderEngineType;
 
 //------------------------------------------------------------------------------
@@ -204,6 +205,71 @@ protected:
 	virtual void UpdateCounters();
 
 	vector<CPURenderThread *> renderThreads;
+};
+
+//------------------------------------------------------------------------------
+// Base class for FPGA render engines
+//------------------------------------------------------------------------------
+
+class FPGARenderEngine;
+
+class FPGARenderThread {
+public:
+	FPGARenderThread(FPGARenderEngine *engine,
+			const u_int index, luxrays::IntersectionDevice *dev,
+			const bool enablePerPixelNormBuffer,
+			const bool enablePerScreenNormBuffer);
+	virtual ~FPGARenderThread();
+
+	virtual void Start();
+	virtual void Interrupt();
+	virtual void Stop();
+
+	virtual void BeginEdit();
+	virtual void EndEdit(const EditActionList &editActions);
+
+	friend class FPGARenderEngine;
+
+protected:
+	virtual boost::thread *AllocRenderThread() = 0;
+
+	virtual void StartRenderThread();
+	virtual void StopRenderThread();
+
+	virtual void RenderFunc() = 0;
+
+	u_int threadIndex;
+	FPGARenderEngine *renderEngine;
+
+	boost::thread *renderThread;
+	Film *threadFilm;
+	luxrays::IntersectionDevice *device;
+
+	bool started, editMode;
+	bool enablePerPixelNormBuffer, enablePerScreenNormBuffer;
+};
+
+class FPGARenderEngine : public RenderEngine {
+public:
+	FPGARenderEngine(RenderConfig *cfg, Film *flm, boost::mutex *flmMutex);
+	~FPGARenderEngine();
+
+	friend class FPGARenderThread;
+
+protected:
+	virtual FPGARenderThread *NewRenderThread(const u_int index,
+			luxrays::IntersectionDevice *device) = 0;
+
+	virtual void StartLockLess();
+	virtual void StopLockLess();
+
+	virtual void BeginEditLockLess();
+	virtual void EndEditLockLess(const EditActionList &editActions);
+
+	virtual void UpdateFilmLockLess();
+	virtual void UpdateCounters();
+
+	vector<FPGARenderThread *> renderThreads;
 };
 
 //------------------------------------------------------------------------------

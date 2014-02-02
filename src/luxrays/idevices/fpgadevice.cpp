@@ -5,12 +5,11 @@
 
 using namespace luxrays;
 
-size_t FPGAIntersectionDevice::RayBufferSize = 8;
+size_t FPGAIntersectionDevice::RayBufferSize = 1024;
 
 FPGAIntersectionDevice::FPGAIntersectionDevice(const Context *context,
-		int devFile, const size_t devIndex) :
-	HardwareIntersectionDevice(context, DEVICE_TYPE_FPGA, devIndex),
-	dev(devFile) {
+		const size_t devIndex) :
+	HardwareIntersectionDevice(context, DEVICE_TYPE_FPGA, devIndex) {
 
 	deviceName = std::string("FPGAIntersect");
 	reportedPermissionError = false;
@@ -33,17 +32,22 @@ void FPGAIntersectionDevice::SetDataSet(DataSet *newDataSet) {
 		const AcceleratorType accelType = dataSet->GetAcceleratorType();
 		if (accelType != ACCEL_AUTO) {
 			accel = dataSet->GetAccelerator(accelType);
+			if (!accel->CanRunOnFPGADevice(this)) {
+				accel = dataSet->GetAccelerator(ACCEL_NBVH);
+			}
 		} else {
 			accel = dataSet->GetAccelerator(ACCEL_NBVH);
 		}
 	}
+
+	accel->SendSceneToFPGA();
 }
 
 void FPGAIntersectionDevice::Start() {
 	IntersectionDevice::Start();
 
 	if (dataParallelSupport) {
-		rayBufferQueue = new RayBufferQueueM2M(queueCount);
+		rayBufferQueue = new RayBufferQueueM2O();
 
 		// Create the thread for the rendering
 		intersectionThread = new boost::thread(boost::bind(FPGAIntersectionDevice::IntersectionThread, this));
@@ -120,10 +124,14 @@ void FPGAIntersectionDevice::IntersectionThread(FPGAIntersectionDevice *renderDe
 			const Ray *rb = rayBuffer->GetRayBuffer();
 			RayHit *hb = rayBuffer->GetHitBuffer();
 			const size_t rayCount = rayBuffer->GetRayCount();
+			
 			for (unsigned int i = 0; i < rayCount; ++i) {
 				hb[i].SetMiss();
-				renderDevice->accel->Intersect(&rb[i], &hb[i]);
+				//renderDevice->accel->Intersect(&rb[i], &hb[i]);
 			}
+
+			xrti_intersect((void *)rb, rayCount*sizeof(Ray), rayCount, (void *)hb, rayCount*sizeof(RayHit));
+
 			renderDevice->statsTotalDataParallelRayCount += rayCount;
 			queue->PushDone(rayBuffer);
 
