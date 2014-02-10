@@ -31,7 +31,7 @@
 #include "luxrays/core/randomgen.h"
 
 #define RAYBUFFERS_COUNT 10
-#define TRIANGLE_COUNT 66450
+#define TRIANGLE_COUNT 1000
 #define SPACE_SIZE 1000.f
 
 void DebugHandler(const char *msg) {
