@@ -140,25 +140,7 @@ void NativeThreadDeviceDescription::AddDeviceDescs(std::vector<DeviceDescription
 }
 
 void FPGADeviceDescription::AddDeviceDescs(std::vector<DeviceDescription *> &descriptions) {
-	DWORD dwStatus;
-	WDC_PCI_SCAN_RESULT scanResult;
-	
-	BZERO(scanResult);
-	dwStatus = WDC_PciScanDevices(DRIVER_DEFAULT_VENDOR_ID, DRIVER_DEFAULT_DEVICE_ID, &scanResult);
-    if (WD_STATUS_SUCCESS != dwStatus)
-    {
-        DRIVER_ERR("Failed scanning the PCI bus. "
-            "Error: 0x%lx\n", dwStatus);
-		return;
-    }
-
-	char buf[64];
-	for (size_t i = 0; i < scanResult.dwNumDevices; ++i) {
-		sprintf(buf, "FPGA-%03d", (int)i);
-		std::string deviceName = std::string(buf);
-
-		descriptions.push_back(new FPGADeviceDescription(deviceName, scanResult.deviceSlot[i]));
-	}
+	descriptions.push_back(new FPGADeviceDescription("FPGA"));
 }
 
 //------------------------------------------------------------------------------

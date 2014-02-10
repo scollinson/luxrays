@@ -43,7 +43,8 @@ typedef enum {
 	BIDIRVMCPU = 10,
 	FILESAVER = 11,
 	RTPATHOCL = 12,
-	PATHHYBRID = 13
+	PATHHYBRID = 13,
+	PATHFPGA = 14
 } RenderEngineType;
 
 //------------------------------------------------------------------------------
@@ -314,6 +315,104 @@ protected:
 	virtual void UpdateCounters();
 
 	vector<HybridRenderThread *> renderThreads;
+};
+
+//------------------------------------------------------------------------------
+// Base class for FPGA render engines
+//------------------------------------------------------------------------------
+
+class FPGARenderThread;
+class FPGARenderEngine;
+
+class FPGARenderState {
+public:
+	FPGARenderState(FPGARenderThread *rendeThread, Film *film, luxrays::RandomGenerator *rndGen);
+	virtual ~FPGARenderState();
+
+	virtual void GenerateRays(FPGARenderThread *renderThread) = 0;
+	// Returns the number of rendered samples (mostly for statistics)
+	virtual double CollectResults(FPGARenderThread *renderThread) = 0;
+
+	friend class FPGARenderThread;
+	friend class FPGARenderEngine;
+
+protected:
+	Sampler *sampler;
+};
+
+class FPGARenderThread {
+public:
+	FPGARenderThread(FPGARenderEngine *re, const unsigned int index,
+			luxrays::IntersectionDevice *device);
+	~FPGARenderThread();
+
+	void Start();
+    void Interrupt();
+	void Stop();
+
+	void BeginEdit();
+	void EndEdit(const EditActionList &editActions);
+
+	friend class FPGARenderState;
+	friend class FPGARenderEngine;
+
+protected:
+	virtual FPGARenderState *AllocRenderState(luxrays::RandomGenerator *rndGen) = 0;
+	virtual boost::thread *AllocRenderThread() = 0;
+
+	void RenderFunc();
+
+	void StartRenderThread();
+	void StopRenderThread();
+
+	size_t PushRay(const luxrays::Ray &ray);
+	void PopRay(const luxrays::Ray **ray, const luxrays::RayHit **rayHit);
+
+	boost::thread *renderThread;
+	Film *threadFilm;
+	luxrays::IntersectionDevice *device;
+
+	unsigned int threadIndex;
+	FPGARenderEngine *renderEngine;
+	u_int pixelCount;
+
+	double samplesCount;
+
+	unsigned int pendingRayBuffers;
+	luxrays::RayBuffer *currentRayBufferToSend;
+	std::deque<luxrays::RayBuffer *> freeRayBuffers;
+
+	luxrays::RayBuffer *currentReiceivedRayBuffer;
+	size_t currentReiceivedRayBufferIndex;
+
+	// Used to store values shared among all metropolis samplers
+	double metropolisSharedTotalLuminance, metropolisSharedSampleCount;
+
+	bool started, editMode;
+};
+
+class FPGARenderEngine : public RenderEngine {
+public:
+	FPGARenderEngine(RenderConfig *cfg, Film *flm, boost::mutex *flmMutex);
+	virtual ~FPGARenderEngine() { }
+
+	friend class FPGARenderState;
+	friend class FPGARenderThread;
+
+protected:
+	virtual FPGARenderThread *NewRenderThread(const u_int index,
+			luxrays::IntersectionDevice *device) = 0;
+
+	virtual void StartLockLess();
+	virtual void StopLockLess();
+
+	virtual void BeginEditLockLess();
+	virtual void EndEditLockLess(const EditActionList &editActions);
+
+	virtual void UpdateFilmLockLess();
+	virtual void UpdateCounters();
+
+	vector<FPGARenderThread *> renderThreads;
 };
 
 }

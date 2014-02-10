@@ -30,6 +30,7 @@
 #include "slg/engines/bidirvmcpu/bidirvmcpu.h"
 #include "slg/engines/filesaver/filesaver.h"
 #include "slg/engines/pathhybrid/pathhybrid.h"
+#include "slg/engines/pathfpga/pathfpga.h"
 #include "slg/sdl/bsdf.h"
 
 #include "luxrays/core/intersectiondevice.h"
@@ -99,7 +100,7 @@ void RenderEngine::Start() {
 	film->ResetConvergenceTest();
 	convergence = 0.f;
 	lastConvergenceTestTime = startTime;
-	lastConvergenceTestSamplesCount = 0;	
+	lastConvergenceTestSamplesCount = 0;
 }
 
 void RenderEngine::Stop() {
@@ -234,6 +235,8 @@ RenderEngineType RenderEngine::String2RenderEngineType(const string &type) {
 		return RTPATHOCL;
 	if ((type.compare("13") == 0) || (type.compare("PATHHYBRID") == 0))
 		return PATHHYBRID;
+	if ((type.compare("14") == 0) || (type.compare("PATHFPGA") == 0))
+		return PATHFPGA;
 	throw runtime_error("Unknown render engine type: " + type);
 }
 
@@ -259,6 +262,8 @@ const string RenderEngine::RenderEngineType2String(const RenderEngineType type) 
 			return "RTPATHOCL";
 		case PATHHYBRID:
 			return "PATHHYBRID";
+		case PATHFPGA:
+			return "PATHFPGA";
 		default:
 			throw runtime_error("Unknown render engine type: " + boost::lexical_cast<std::string>(type));
 	}
@@ -296,6 +301,8 @@ RenderEngine *RenderEngine::AllocRenderEngine(const RenderEngineType engineType,
 #endif
 		case PATHHYBRID:
 			return new PathHybridRenderEngine(renderConfig, film, filmMutex);
+		case PATHFPGA:
+			return new PathFPGARenderEngine(renderConfig, film, filmMutex);
 		default:
 			throw runtime_error("Unknown render engine type: " + boost::lexical_cast<std::string>(engineType));
 	}
@@ -878,6 +885,340 @@ void HybridRenderEngine::UpdateFilmLockLess() {
 }
 
 void HybridRenderEngine::UpdateCounters() {
+	// Update the sample count statistic
+	double totalCount = 0.0;
+	for (size_t i = 0; i < renderThreads.size(); ++i)
+		totalCount += renderThreads[i]->samplesCount;
+	samplesCount = totalCount;
+
+	// Update the ray count statistic
+	raysCount = intersectionDevices[0]->GetTotalRaysCount();
+}
+
+//------------------------------------------------------------------------------
+// FPGARenderState
+//------------------------------------------------------------------------------
+
+FPGARenderState::FPGARenderState(FPGARenderThread *rendeThread,
+		Film *film, RandomGenerator *rndGen) {
+	// Setup the sampler
+	sampler = rendeThread->renderEngine->renderConfig->AllocSampler(rndGen, film,
+			&rendeThread->metropolisSharedTotalLuminance,
+			&rendeThread->metropolisSharedSampleCount);
+}
+
+FPGARenderState::~FPGARenderState() {
+	delete sampler;
+}
+
+//------------------------------------------------------------------------------
+// FPGARenderThread
+//------------------------------------------------------------------------------
+
+FPGARenderThread::FPGARenderThread(FPGARenderEngine *re,
+		const u_int index, IntersectionDevice *dev) {
+	device = dev;
+
+	renderThread = NULL;
+	threadFilm = NULL;
+
+	threadIndex = index;
+	renderEngine = re;
+
+	samplesCount = 0.0;
+
+	pendingRayBuffers = 0;
+	currentRayBufferToSend = NULL;
+	currentReiceivedRayBuffer = NULL;
+
+	started = false;
+	editMode = false;
+}
+
+FPGARenderThread::~FPGARenderThread() {
+	if (editMode)
+		EndEdit(EditActionList());
+	if (started)
+		Stop();
+
+	delete threadFilm;
+}
+
+void FPGARenderThread::Start() {
+	started = true;
+	StartRenderThread();
+}
+
+void FPGARenderThread::Interrupt() {
+	if (renderThread)
+		renderThread->interrupt();
+}
+
+void FPGARenderThread::Stop() {
+	StopRenderThread();
+	started = false;
+}
+
+void FPGARenderThread::StartRenderThread() {
+	const u_int filmWidth = renderEngine->film->GetWidth();
+	const u_int filmHeight = renderEngine->film->GetHeight();
+
+	delete threadFilm;
+	threadFilm = new Film(filmWidth, filmHeight);
+	threadFilm->CopyDynamicSettings(*(renderEngine->film));
+	threadFilm->SetPerPixelNormalizedBufferFlag(true);
+	threadFilm->SetPerScreenNormalizedBufferFlag(true);
+	threadFilm->SetFrameBufferFlag(false);
+	threadFilm->Init();
+
+	samplesCount = 0.0;
+
+	// Create the thread for the rendering
+	renderThread = AllocRenderThread();
+}
+
+void FPGARenderThread::StopRenderThread() {
+	if (renderThread) {
+		renderThread->interrupt();
+		renderThread->join();
+		delete renderThread;
+		renderThread = NULL;
+	}
+}
+
+void FPGARenderThread::BeginEdit() {
+	StopRenderThread();
+}
+
+void FPGARenderThread::EndEdit(const EditActionList &editActions) {
+	StartRenderThread();
+}
+
+size_t FPGARenderThread::PushRay(const Ray &ray) {
+	// Check if I have a valid currentRayBuffer
+	if (!currentRayBufferToSend) {
+		if (freeRayBuffers.size() == 0) {
+			// I have to allocate a new RayBuffer
+			currentRayBufferToSend = device->NewRayBuffer();
+		} else {
+			// I can reuse one in queue
+			currentRayBufferToSend = freeRayBuffers.front();
+			freeRayBuffers.pop_front();
+		}
+	}
+
+	const size_t index = currentRayBufferToSend->AddRay(ray);
+
+	// Check if the buffer is now full
+	if (currentRayBufferToSend->IsFull()) {
+		// Send the work to the device
+		device->PushRayBuffer(currentRayBufferToSend, threadIndex);
+		currentRayBufferToSend = NULL;
+		++pendingRayBuffers;
+	}
+
+	return index;
+}
+
+void FPGARenderThread::PopRay(const Ray **ray, const RayHit **rayHit) {
+	// Check if I have to get  the results out of intersection device
+	if (!currentReiceivedRayBuffer) {
+		currentReiceivedRayBuffer = device->PopRayBuffer(threadIndex);
+		--pendingRayBuffers;
+		currentReiceivedRayBufferIndex = 0;
+	} else if (currentReiceivedRayBufferIndex >= currentReiceivedRayBuffer->GetSize()) {
+		// All the results in the RayBuffer has been elaborated
+		currentReiceivedRayBuffer->Reset();
+		freeRayBuffers.push_back(currentReiceivedRayBuffer);
+
+		// Get a new buffer
+		currentReiceivedRayBuffer = device->PopRayBuffer(threadIndex);
+		--pendingRayBuffers;
+		currentReiceivedRayBufferIndex = 0;
+	}
+
+	*ray = currentReiceivedRayBuffer->GetRay(currentReiceivedRayBufferIndex);
+	*rayHit = currentReiceivedRayBuffer->GetRayHit(currentReiceivedRayBufferIndex++);
+}
+
+void FPGARenderThread::RenderFunc() {
+	//SLG_LOG("[FPGARenderThread::" << threadIndex << "] Rendering thread started");
+	boost::this_thread::disable_interruption di;
+
+	Film *film = threadFilm;
+	const u_int filmWidth = film->GetWidth();
+	const u_int filmHeight = film->GetHeight();
+	pixelCount = filmWidth * filmHeight;
+
+	RandomGenerator *rndGen = new RandomGenerator(threadIndex + renderEngine->seedBase);
+
+	const u_int incrementStep = 4096;
+	vector<FPGARenderState *> states(incrementStep);
+
+	try {
+		// Initialize the first states
+		for (u_int i = 0; i < states.size(); ++i)
+			states[i] = AllocRenderState(rndGen);
+
+		u_int generateIndex = 0;
+		u_int collectIndex = 0;
+		while (!boost::this_thread::interruption_requested()) {
+			// Generate new rays up to the point to have 3 pending buffers
+			while (pendingRayBuffers < 3) {
+				states[generateIndex]->GenerateRays(this);
+
+				generateIndex = (generateIndex + 1) % states.size();
+				if (generateIndex == collectIndex) {
+					//SLG_LOG("[FPGARenderThread::" << threadIndex << "] Increasing states size by " << incrementStep);
+					//SLG_LOG("[FPGARenderThread::" << threadIndex << "] State size: " << states.size());
+
+					// Insert a set of new states and continue
+					states.insert(states.begin() + generateIndex, incrementStep, NULL);
+					for (u_int i = generateIndex; i < generateIndex + incrementStep; ++i)
+						states[i] = AllocRenderState(rndGen);
+					collectIndex += incrementStep;
+				}
+			}
+
+			//SLG_LOG("[FPGARenderThread::" << threadIndex << "] State size: " << states.size());
+			//SLG_LOG("[FPGARenderThread::" << threadIndex << "] generateIndex: " << generateIndex);
+			//SLG_LOG("[FPGARenderThread::" << threadIndex << "] collectIndex: " << collectIndex);
+			//SLG_LOG("[FPGARenderThread::" << threadIndex << "] pendingRayBuffers: " << pendingRayBuffers);
+
+			// Collect rays up to the point to have only 1 pending buffer
+			while (pendingRayBuffers > 1) {
+				samplesCount += states[collectIndex]->CollectResults(this);
+
+				const u_int newCollectIndex = (collectIndex + 1) % states.size();
+				// A safety-check, it should never happen
+				if (newCollectIndex == generateIndex)
+					break;
+				collectIndex = newCollectIndex;
+			}
+		}
+
+		//SLG_LOG("[FPGARenderThread::" << threadIndex << "] Rendering thread halted");
+	} catch (boost::thread_interrupted) {
+		SLG_LOG("[FPGARenderThread::" << threadIndex << "] Rendering thread halted");
+	}
+#ifndef LUXRAYS_DISABLE_OPENCL
+	catch (cl::Error err) {
+		SLG_LOG("[FPGARenderThread::" << threadIndex << "] Rendering thread ERROR: " << err.what() <<
+				"(" << oclErrorString(err.err()) << ")");
+	}
+#endif
+
+	// Clean current ray buffers
+	if (currentRayBufferToSend) {
+		currentRayBufferToSend->Reset();
+		freeRayBuffers.push_back(currentRayBufferToSend);
+		currentRayBufferToSend = NULL;
+	}
+	if (currentReiceivedRayBuffer) {
+		currentReiceivedRayBuffer->Reset();
+		freeRayBuffers.push_back(currentReiceivedRayBuffer);
+		currentReiceivedRayBuffer = NULL;
+	}
+
+	// Free all states
+	for (u_int i = 0; i < states.size(); ++i)
+		delete states[i];
+	delete rndGen;
+
+	// Remove all pending ray buffers
+	while (pendingRayBuffers > 0) {
+		RayBuffer *rayBuffer = device->PopRayBuffer(threadIndex);
+		--(pendingRayBuffers);
+		rayBuffer->Reset();
+		freeRayBuffers.push_back(rayBuffer);
+	}
+}
+
+//------------------------------------------------------------------------------
+// FPGARenderEngine
+//------------------------------------------------------------------------------
+
+FPGARenderEngine::FPGARenderEngine(RenderConfig *rcfg, Film *flm,
+	boost::mutex *flmMutex) : RenderEngine(rcfg, flm, flmMutex) {
+	//--------------------------------------------------------------------------
+	// Create the intersection devices and render threads
+	//--------------------------------------------------------------------------
+
+	selectedDeviceDescs = ctx->GetAvailableDeviceDescriptions();
+	DeviceDescription::Filter(DEVICE_TYPE_FPGA,
+		selectedDeviceDescs);
+	if (selectedDeviceDescs.empty())
+		throw runtime_error("No FPGA device found");
+
+	const unsigned int renderThreadCount = 1;
+	if (selectedDeviceDescs.size() == 1) {
+		// Only one intersection device, use directly the device
+		ctx->AddIntersectionDevices(selectedDeviceDescs);
+	} else {
+		// Multiple intersection devices, use a virtual device
+		ctx->AddVirtualIntersectionDevice(selectedDeviceDescs);
+	}
+	intersectionDevices.push_back(ctx->GetIntersectionDevices()[0]);
+	intersectionDevices[0]->SetQueueCount(renderThreadCount);
+
+	// Check if I have to set max. QBVH stack size
+	const bool enableImageStorage = renderConfig->cfg.GetBoolean("accelerator.imagestorage.enable", false);
+	const size_t qbvhStackSize = renderConfig->cfg.GetInt("accelerator.qbvh.stacksize.max", 64);
+	for (size_t i = 0; i < intersectionDevices.size(); ++i) {
+		intersectionDevices[i]->SetEnableImageStorage(enableImageStorage);
+		intersectionDevices[i]->SetMaxStackSize(qbvhStackSize);
+	}
+
+	// Set the LuxRays DataSet
+	ctx->SetDataSet(renderConfig->scene->dataSet);
+
+	SLG_LOG("Starting "<< renderThreadCount << " FPGA render threads");
+	renderThreads.resize(renderThreadCount, NULL);
+}
+
+void FPGARenderEngine::StartLockLess() {
+	for (size_t i = 0; i < renderThreads.size(); ++i) {
+		if (!renderThreads[i])
+			renderThreads[i] = NewRenderThread(i, intersectionDevices[0]);
+		renderThreads[i]->Start();
+	}
+}
+
+void FPGARenderEngine::StopLockLess() {
+	for (size_t i = 0; i < renderThreads.size(); ++i)
+		renderThreads[i]->Interrupt();
+	for (size_t i = 0; i < renderThreads.size(); ++i)
+		renderThreads[i]->Stop();
+}
+
+void FPGARenderEngine::BeginEditLockLess() {
+	for (size_t i = 0; i < renderThreads.size(); ++i)
+		renderThreads[i]->Interrupt();
+	for (size_t i = 0; i < renderThreads.size(); ++i)
+		renderThreads[i]->BeginEdit();
+}
+
+void FPGARenderEngine::EndEditLockLess(const EditActionList &editActions) {
+	// Reset statistics in order to be more accurate
+	intersectionDevices[0]->ResetPerformaceStats();
+
+	for (size_t i = 0; i < renderThreads.size(); ++i)
+		renderThreads[i]->EndEdit(editActions);
+}
+
+void FPGARenderEngine::UpdateFilmLockLess() {
+	boost::unique_lock<boost::mutex> lock(*filmMutex);
+
+	film->Reset();
+
+	// Merge the all thread films
+	for (size_t i = 0; i < renderThreads.size(); ++i) {
+		if (renderThreads[i]->threadFilm)
+			film->AddFilm(*(renderThreads[i]->threadFilm));
+	}
+}
+
+void FPGARenderEngine::UpdateCounters() {
 	// Update the sample count statistic
 	double totalCount = 0.0;
 	for (size_t i = 0; i < renderThreads.size(); ++i)

@@ -134,10 +134,12 @@ PreprocessOCLKernels(${LuxRays_SOURCE_DIR}/src/luxrays/kernels luxrays ${LUXRAYS
 ###########################################################################
 
 set(LUXRAYS_SRCS
+	/mnt/scratch/sam/ray_tracer/ipcore_dir/bmd_design/dma_performance_demo/linux_sw/xbmd/xrti_lib.cpp
 	${LuxRays_SOURCE_DIR}/src/luxrays/accelerators/bvhaccel.cpp
 	${LuxRays_SOURCE_DIR}/src/luxrays/accelerators/mqbvhaccel.cpp
 	${LuxRays_SOURCE_DIR}/src/luxrays/accelerators/qbvhaccel.cpp
 	${LuxRays_SOURCE_DIR}/src/luxrays/accelerators/mbvhaccel.cpp
+    ${LuxRays_SOURCE_DIR}/src/luxrays/accelerators/nbvhaccel.cpp
 	${LuxRays_SOURCE_DIR}/src/luxrays/core/accelerator.cpp
 	${LuxRays_SOURCE_DIR}/src/luxrays/core/context.cpp
 	${LuxRays_SOURCE_DIR}/src/luxrays/core/dataset.cpp
@@ -151,6 +153,7 @@ set(LUXRAYS_SRCS
 	${LuxRays_SOURCE_DIR}/src/luxrays/idevices/openclidevice.cpp
 	${LuxRays_SOURCE_DIR}/src/luxrays/idevices/nativeidevice.cpp
 	${LuxRays_SOURCE_DIR}/src/luxrays/idevices/virtualidevice.cpp
+    ${LuxRays_SOURCE_DIR}/src/luxrays/idevices/fpgadevice.cpp
 	${LuxRays_SOURCE_DIR}/src/luxrays/utils/ply/rply.cpp
 	${LuxRays_SOURCE_DIR}/src/luxrays/utils/ocl.cpp
 	${LuxRays_SOURCE_DIR}/src/luxrays/utils/properties.cpp

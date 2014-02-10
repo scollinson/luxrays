@@ -537,26 +537,6 @@ void QBVHAccel::Init(const std::deque<const Mesh *> &ms, const u_longlong totalV
 	LR_LOG(ctx, "Total QBVH memory usage: " << nNodes * sizeof(QBVHNode) / 1024 << "Kbytes");
 	LR_LOG(ctx, "Total QBVH QuadTriangle count: " << nQuads);
 	LR_LOG(ctx, "Max. QBVH Depth: " << maxDepth);
-    
-    FILE *f = fopen("qbvh_nodes.txt", "w");
-    unsigned char *b = (unsigned char *)nodes;
-    for (u_int i = 0; i < nNodes * sizeof(QBVHNode); i++) {
-        fprintf(f, "%02x", b[i]);
-        if ((i+1) % 16 == 0) {
-            fprintf(f, "\n");
-        }
-    }
-    fclose(f);
-    
-    f = fopen("qbvh_prims.txt", "w");
-    b = (unsigned char *)prims;
-    for (u_int i = 0; i < nQuads * sizeof(QuadTriangle); i++) {
-        fprintf(f, "%02x", b[i]);
-        if ((i+1) % 16 == 0) {
-            fprintf(f, "\n");
-        }
-    }
-    fclose(f);
 
 	initialized = true;
 }

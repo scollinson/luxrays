@@ -62,6 +62,7 @@ INCLUDE(KernelPreprocess)
 
 SET(LuxRays_INCLUDE_DIR "${LuxRays_SOURCE_DIR}/include")
 include_directories("${LuxRays_INCLUDE_DIR}")
+include_directories(/mnt/scratch/sam/ray_tracer/ipcore_dir/bmd_design/dma_performance_demo/linux_sw/xbmd)
 
 # When using single configuration generators like make
 # cmake does need to know which of the possible configurations

@@ -125,17 +125,13 @@ protected:
 
 class FPGADeviceDescription : public DeviceDescription {
 public:
-	FPGADeviceDescription(const std::string deviceName, WD_PCI_SLOT deviceSlot) : 
-		DeviceDescription(deviceName, DEVICE_TYPE_FPGA), slot(deviceSlot) { }
-
-	WD_PCI_SLOT GetSlotIndex() const { return slot; };
+	FPGADeviceDescription(const std::string deviceName) : 
+		DeviceDescription(deviceName, DEVICE_TYPE_FPGA) { }
 
 	friend class Context;
 
 protected:
 	static void AddDeviceDescs(std::vector<DeviceDescription *> &descriptions);
-
-	WD_PCI_SLOT slot;
 };
 
 }

@@ -91,6 +91,8 @@ void RenderConfig::Init(const string *fileName, const Properties *additionalProp
 		scene->accelType = ACCEL_QBVH;
 	else if (accelType == "MQBVH")
 		scene->accelType = ACCEL_MQBVH;
+	else if (accelType == "NBVH")
+		scene->accelType = ACCEL_NBVH;
 	else {
 		SLG_LOG("Unknown accelerator type (using AUTO instead): " << accelType);
 	}

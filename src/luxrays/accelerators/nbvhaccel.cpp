@@ -37,51 +37,13 @@ bool NBVHAccel::CanRunOnOpenCLDevice(OpenCLIntersectionDevice *device) const {
 	return false;
 }
 
-void NBVHAccel::SendToFPGA(WDC_DEVICE_HANDLE hDev) const
-{
-	DWORD dwStatus;
-	PDRIVER_DEV_CTX pDevCtx = (PDRIVER_DEV_CTX)WDC_GetDevContext(hDev);
-	DWORD dwOptions = DMA_TO_DEVICE | DMA_KERNEL_BUFFER_ALLOC;
-	UINT32 NodeAddr, PrimAddr;
+bool NBVHAccel::CanRunOnFPGADevice(FPGAIntersectionDevice *device) const { 
+	return true;
+}
 
-    /* Allocate and lock a DMA buffer */
-    dwStatus = WDC_DMAContigBufLock(hDev, &pDevCtx->pNodeBuf, dwOptions, nNodes * sizeof(NBVHNode),
-        &pDevCtx->hDma->pNodeDma);
-    if (WD_STATUS_SUCCESS != dwStatus) 
-    {
-        DRIVER_ERR("DRIVER_DMAOpen: Failed locking a DMA buffer. "
-            "Error 0x%lx\n", dwStatus);
-        goto Error;
-    }
-	memcpy(pDevCtx->pNodeBuf, nodes, nNodes * sizeof(NBVHNode));
-
-    dwStatus = WDC_DMAContigBufLock(hDev, &pDevCtx->pPrimBuf, dwOptions, nQuads * sizeof(NTriangle),
-        &pDevCtx->hDma->pPrimDma);
-    if (WD_STATUS_SUCCESS != dwStatus) 
-    {
-        DRIVER_ERR("DRIVER_DMAOpen: Failed locking a DMA buffer. "
-            "Error 0x%lx\n", dwStatus);
-        goto Error;
-    }
-	memcpy(pDevCtx->pPrimBuf, prims, nQuads * sizeof(NTriangle));
-
-	pDevCtx->fIsRead = TRUE;
-
-	NodeAddr = (UINT32)pDevCtx->hDma->pNodeDma->Page[0].pPhysicalAddr;
-	DRIVER_WriteNODEADDR(hDev, NodeAddr);
-	DRIVER_WriteNODECOUNT(hDev, nNodes);
-
-	PrimAddr = (UINT32)pDevCtx->hDma->pPrimDma->Page[0].pPhysicalAddr;
-	DRIVER_WritePRIMADDR(hDev, PrimAddr);
-	DRIVER_WritePRIMCOUNT(hDev, nQuads);
-
-	DRIVER_DMAStart(pDevCtx->hDma, pDevCtx->fIsRead);
-	DRIVER_DMAPollCompletion(pDevCtx->hDma, pDevCtx->fIsRead);
-	return;
-
-Error:
-    if (pDevCtx->hDma)
-        DRIVER_DMAClose((DRIVER_DMA_HANDLE)pDevCtx->hDma);
+void NBVHAccel::SendSceneToFPGA() const {
+	if (xrti_transfer_scene((void *)nodes, nNodes*sizeof(NBVHNode), nNodes, (void *)prims, nQuads*sizeof(NTriangle), nQuads) < 0)
+		throw std::runtime_error("xrti_transfer_scene failed");
 }
 
 NBVHAccel::NBVHAccel(const Context *context,
@@ -171,10 +133,11 @@ void NBVHAccel::Init(const std::deque<const Mesh *> &ms, const u_longlong totalV
 	LR_LOG(ctx, "NBVH completed with " << nNodes << "/" << maxNodes << " nodes");
 	LR_LOG(ctx, "Total NBVH memory usage: " << nNodes * sizeof(NBVHNode) / 1024 << "Kbytes");
 	LR_LOG(ctx, "Total NBVH Triangle count: " << nQuads);
+	LR_LOG(ctx, "Total NBVH Triangle memory usage: " << nQuads* sizeof(NTriangle) / 1024 << "Kbytes");
 	LR_LOG(ctx, "Max. NBVH Depth: " << maxDepth);
     
     
-    FILE *f = fopen("nbvh_nodes.txt", "w");
+    FILE *f = fopen("/mnt/scratch/sam/ray_tracer/tb_generator/data/nbvh_nodes.txt", "w");
     unsigned char *b = (unsigned char *)nodes;
     for (u_int i = 0; i < nNodes * sizeof(NBVHNode); i++) {
         fprintf(f, "%02x", b[i]);
@@ -184,7 +147,7 @@ void NBVHAccel::Init(const std::deque<const Mesh *> &ms, const u_longlong totalV
     }
     fclose(f);
     
-    f = fopen("nbvh_prims.txt", "w");
+    f = fopen("/mnt/scratch/sam/ray_tracer/tb_generator/data/nbvh_prims.txt", "w");
     b = (unsigned char *)prims;
     for (u_int i = 0; i < nQuads * sizeof(NTriangle); i++) {
         fprintf(f, "%02x", b[i]);
