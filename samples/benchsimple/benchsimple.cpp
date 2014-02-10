@@ -31,7 +31,7 @@
 #include "luxrays/core/randomgen.h"
 
 #define RAYBUFFERS_COUNT 10
-#define TRIANGLE_COUNT 500
+#define TRIANGLE_COUNT 66450
 #define SPACE_SIZE 1000.f
 
 void DebugHandler(const char *msg) {
@@ -56,10 +56,10 @@ int main(int argc, char** argv) {
 		//luxrays::DeviceDescription::FilterOne(deviceDescs);
 
 		// Use the first native C++ device available
-		//luxrays::DeviceDescription::Filter(luxrays::DEVICE_TYPE_NATIVE_THREAD, deviceDescs);
+		luxrays::DeviceDescription::Filter(luxrays::DEVICE_TYPE_NATIVE_THREAD, deviceDescs);
 
 		// Use the first FPGA device available
-		luxrays::DeviceDescription::Filter(luxrays::DEVICE_TYPE_FPGA, deviceDescs);
+		//luxrays::DeviceDescription::Filter(luxrays::DEVICE_TYPE_FPGA, deviceDescs);
 		
 		// Use the first OpenCL device available
 		//luxrays::DeviceDescription::Filter(luxrays::DEVICE_TYPE_OPENCL_ALL, deviceDescs);
@@ -186,7 +186,7 @@ int main(int argc, char** argv) {
 
 			ctx->Start();
 
-			//std::cerr << "Running the serial benchmark for 15 seconds..." << std::endl;
+			std::cerr << "Running the serial benchmark for 15 seconds..." << std::endl;
 			double tStart = luxrays::WallClockTime();
 			double tLastCheck = tStart;
 			double bufferDone = 0.0;

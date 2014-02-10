@@ -130,7 +130,26 @@ void FPGAIntersectionDevice::IntersectionThread(FPGAIntersectionDevice *renderDe
 				//renderDevice->accel->Intersect(&rb[i], &hb[i]);
 			}
 
-			xrti_intersect((void *)rb, rayCount*sizeof(Ray), rayCount, (void *)hb, rayCount*sizeof(RayHit));
+			if (xrti_intersect((void *)rb, rayCount*sizeof(Ray), rayCount, (void *)hb, rayCount*sizeof(RayHit)) < 0) {
+		        FILE *f = fopen("/mnt/scratch/sam/ray_tracer/tb_generator/data/rays.txt", "w");
+		        unsigned char *b = (unsigned char *)rb;
+		        for (u_int i = 0; i < rayCount * sizeof(luxrays::Ray); i++) {
+		            fprintf(f, "%02x", b[i]);
+		            if ((i + 1) % 48 == 0)
+		                fprintf(f, "\n");
+		        }
+		        fclose(f);
+		        
+		        f = fopen("/mnt/scratch/sam/ray_tracer/tb_generator/data/hits.txt", "w");
+		        b = (unsigned char *)hb;
+		        for (u_int i = 0; i < rayCount * sizeof(luxrays::RayHit); i++) {
+		            fprintf(f, "%02x", b[i]);
+		            if ((i + 1) % 20 == 0)
+		                fprintf(f, "\n");
+		        }
+		        fclose(f);
+				throw std::runtime_error("xrti_intersect failed");
+			}
 
 			renderDevice->statsTotalDataParallelRayCount += rayCount;
 			queue->PushDone(rayBuffer);

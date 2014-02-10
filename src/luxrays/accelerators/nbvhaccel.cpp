@@ -42,7 +42,8 @@ bool NBVHAccel::CanRunOnFPGADevice(FPGAIntersectionDevice *device) const {
 }
 
 void NBVHAccel::SendSceneToFPGA() const {
-	xrti_transfer_scene((void *)nodes, nNodes*sizeof(NBVHNode), nNodes, (void *)prims, nQuads*sizeof(NTriangle), nQuads);
+	if (xrti_transfer_scene((void *)nodes, nNodes*sizeof(NBVHNode), nNodes, (void *)prims, nQuads*sizeof(NTriangle), nQuads) < 0)
+		throw std::runtime_error("xrti_transfer_scene failed");
 }
 
 NBVHAccel::NBVHAccel(const Context *context,
@@ -136,25 +137,25 @@ void NBVHAccel::Init(const std::deque<const Mesh *> &ms, const u_longlong totalV
 	LR_LOG(ctx, "Max. NBVH Depth: " << maxDepth);
     
     
-    FILE *f = fopen("/mnt/scratch/sam/ray_tracer/tb_generator/data/nbvh_nodes.txt", "w");
-    unsigned char *b = (unsigned char *)nodes;
-    for (u_int i = 0; i < nNodes * sizeof(NBVHNode); i++) {
-        fprintf(f, "%02x", b[i]);
-        if ((i+1) % 16 == 0) {
-            fprintf(f, "\n");
-        }
-    }
-    fclose(f);
+    // FILE *f = fopen("/mnt/scratch/sam/ray_tracer/tb_generator/data/nbvh_nodes.txt", "w");
+    // unsigned char *b = (unsigned char *)nodes;
+    // for (u_int i = 0; i < nNodes * sizeof(NBVHNode); i++) {
+    //     fprintf(f, "%02x", b[i]);
+    //     if ((i+1) % 16 == 0) {
+    //         fprintf(f, "\n");
+    //     }
+    // }
+    // fclose(f);
     
-    f = fopen("/mnt/scratch/sam/ray_tracer/tb_generator/data/nbvh_prims.txt", "w");
-    b = (unsigned char *)prims;
-    for (u_int i = 0; i < nQuads * sizeof(NTriangle); i++) {
-        fprintf(f, "%02x", b[i]);
-        if ((i+1) % 16 == 0) {
-            fprintf(f, "\n");
-        }
-    }
-    fclose(f);
+    // f = fopen("/mnt/scratch/sam/ray_tracer/tb_generator/data/nbvh_prims.txt", "w");
+    // b = (unsigned char *)prims;
+    // for (u_int i = 0; i < nQuads * sizeof(NTriangle); i++) {
+    //     fprintf(f, "%02x", b[i]);
+    //     if ((i+1) % 16 == 0) {
+    //         fprintf(f, "\n");
+    //     }
+    // }
+    // fclose(f);
 
 	initialized = true;
 }
