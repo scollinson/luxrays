@@ -157,9 +157,10 @@ bool BBox::IntersectP(const Ray &ray,
 		// Update parametric interval from slab intersection $t$s
 		if (tNear > tFar) Swap(tNear, tFar);
 		t0 = tNear > t0 ? tNear : t0;
-		t1 = tFar < t1 ? tFar : t1;
+		t1 = tFar < t1 ? tFar : t1;	
 		if (t0 > t1) return false;
 	}
+
 	if (hitt0) *hitt0 = t0;
 	if (hitt1) *hitt1 = t1;
 	return true;

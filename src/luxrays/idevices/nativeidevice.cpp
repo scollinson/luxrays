@@ -40,7 +40,8 @@ NativeThreadIntersectionDevice::NativeThreadIntersectionDevice(
 	deviceName = std::string("NativeIntersect");
 	reportedPermissionError = false;
 	rayBufferQueue = NULL;
-	threadCount = boost::thread::hardware_concurrency();
+	//threadCount = boost::thread::hardware_concurrency();
+	threadCount = 1;
 }
 
 NativeThreadIntersectionDevice::~NativeThreadIntersectionDevice() {
@@ -144,7 +145,7 @@ RayBuffer *NativeThreadIntersectionDevice::PopRayBuffer(const u_int queueIndex) 
 }
 
 void NativeThreadIntersectionDevice::IntersectionThread(NativeThreadIntersectionDevice *renderDevice, const u_int threadIndex) {
-	//LR_LOG(renderDevice->deviceContext, "[NativeThread device::" << renderDevice->deviceName << "::" << threadIndex <<"] Rendering thread started");
+	LR_LOG(renderDevice->deviceContext, "[NativeThread device::" << renderDevice->deviceName << "::" << threadIndex <<"] Rendering thread started");
 
 	try {
 		RayBufferQueue *queue = renderDevice->rayBufferQueue;
@@ -163,15 +164,34 @@ void NativeThreadIntersectionDevice::IntersectionThread(NativeThreadIntersection
 				hb[i].SetMiss();
 				renderDevice->accel->Intersect(&rb[i], &hb[i]);
 			}
+
 			renderDevice->threadTotalDataParallelRayCount[threadIndex] += rayCount;
 			queue->PushDone(rayBuffer);
 
 			renderDevice->threadDeviceTotalTime[threadIndex] = WallClockTime() - startTime;
+
+	        // FILE *f = fopen("/mnt/scratch/sam/ray_tracer/tb_generator/data/rays.txt", "w");
+	        // unsigned char *b = (unsigned char *)rb;
+	        // for (u_int i = 0; i < rayCount * sizeof(luxrays::Ray); i++) {
+	        //     fprintf(f, "%02x", b[i]);
+	        //     if ((i + 1) % 48 == 0)
+	        //         fprintf(f, "\n");
+	        // }
+	        // fclose(f);
+	        
+	        // f = fopen("/mnt/scratch/sam/ray_tracer/tb_generator/data/hits.txt", "w");
+	        // b = (unsigned char *)hb;
+	        // for (u_int i = 0; i < rayCount * sizeof(luxrays::RayHit); i++) {
+	        //     fprintf(f, "%02x", b[i]);
+	        //     if ((i + 1) % 20 == 0)
+	        //         fprintf(f, "\n");
+	        // }
+	        // fclose(f);
 		}
 
-		//LR_LOG(renderDevice->deviceContext, "[NativeThread device::" << renderDevice->deviceName << "::" << threadIndex <<"] Rendering thread halted");
+		LR_LOG(renderDevice->deviceContext, "[NativeThread device::" << renderDevice->deviceName << "::" << threadIndex <<"] Rendering thread halted");
 	} catch (boost::thread_interrupted) {
-		//LR_LOG(renderDevice->deviceContext, "[NativeThread device::" << renderDevice->deviceName << "::" << threadIndex <<"] Rendering thread halted");
+		LR_LOG(renderDevice->deviceContext, "[NativeThread device::" << renderDevice->deviceName << "::" << threadIndex <<"] Rendering thread halted");
 	}
 }
 

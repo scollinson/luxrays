@@ -343,8 +343,8 @@ static int BatchSimpleMode(const double haltTime, const unsigned int haltSpp, co
 			break;
 
 		// Print some information about the rendering progress
-		sprintf(buf, "[Elapsed time: %3d/%dsec][Samples %4d/%d][Convergence %f%%][Avg. samples/sec % 3.2fM on %.1fK tris]",
-				int(elapsedTime), int(haltTime), pass, haltSpp, 100.f * convergence, engine->GetTotalSamplesSec() / 1000000.0,
+		sprintf(buf, "[Elapsed time: %3d/%dsec][Samples %4d/%d][Convergence %f%%][Avg. rays/sec % 3.2fk on %.1fK tris]",
+				int(elapsedTime), int(haltTime), pass, haltSpp, 100.f * convergence, engine->GetTotalRaysSec() / 1000.0,
 				config->scene->dataSet->GetTotalTriangleCount() / 1000.0);
 
 		SLG_LOG(buf);
@@ -355,6 +355,10 @@ static int BatchSimpleMode(const double haltTime, const unsigned int haltSpp, co
 
 	// Save the rendered image
 	session->SaveFilmImage();
+
+	sprintf(buf, "[Rays/sec % 3.2fk]", engine->GetTotalRaysSec() / 1000.0);
+
+	SLG_LOG(buf);
 
 	delete session;
 	SLG_LOG("Done.");
